@@ -20,24 +20,21 @@ fokus på procedurell generation.
 
 - Gå runt med WASD och mus. Hoppa med mellanslag? Kamera i första-person. Kan ta mycket från labbserien.
 - Voxlar, med inte så mycket texturing. En voxel är en enda färg, platt.
-- Ljus: gouraud. En sol, directional.
-- Procedurell genereration av terräng/"biomes", träd, blommor, gräs
-- Terräng-generering påverkas av en ritad karta, ungefär som en splat map. Olika
-  bilder för platt/berg, slätt/skog etc.
-- Partiklar
-  - Pollen
+- Ljus: gouraud? En sol, directional.
+- Procedurell genereration av terräng/"biomes", träd, blommor, gräs. Perlin-noise för terrängen, allt annat mer handskrivet. Terrängen har begränsad storlek.
+- Partiklar, t.ex. pollen, insekter.
 - Baka kladdkaka
 
 == Kommer kanske göra
 
-- Skuggor. Vi vet inte exakt hur vi vill göra, men en tanke just nu är att byta solen till positional om det innebär att skuggorna blir lättare. Det såg ut så när vi gjorde lite snabb efterforskning.
-- Ljudeffekter: regn, vind, fåglar.
+- Skuggor. Vi vet inte exakt hur vi vill göra, men vår första tanke är att börja med shadow mapping och se vad som händer.
 - Grafiska vädereffekter: regn, vind. Påverkar fysiken (gräs/löv blåser i vinden).
 - Att gå runt påverkar fysiken (puttar undrar gräs/löv).
 - Placera ut växter, terräng, interaktivt.
 - Nätverking, gå runt i varandras trädgårdar. (Inte så kul utan interaktivitet.)
-- Dag/natt-cykel.
 - Vattendrag.
+- Dag/natt-cykel.
+- Ljudeffekter: regn, vind, fåglar.
 
 == Uppdelning
 
