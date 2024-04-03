@@ -79,5 +79,6 @@ pages_preview_stop:
   allow_failure: true
   environment:
     name: preview/${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME}
+    action: stop
   script: |
     echo "bye"
