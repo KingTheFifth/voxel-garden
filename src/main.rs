@@ -16,8 +16,12 @@ const MAX_VOXELS: usize = 1000;
 
 struct App {
     ctx: Box<dyn RenderingBackend>,
+    #[cfg(feature = "egui")]
+    egui_mq: egui_miniquad::EguiMq,
     pipeline: Pipeline,
     prev_t: f64,
+
+    rotation_speed: f64,
 
     flowers: Vec<Model>,
     model: (Bindings, i32),
@@ -110,12 +114,37 @@ impl App {
         );
 
         Self {
+            #[cfg(feature = "egui")]
+            egui_mq: egui_miniquad::EguiMq::new(&mut *ctx),
             ctx,
             pipeline,
             prev_t: 0.0,
+            rotation_speed: 1.0,
             model: (bindings, indices.len() as i32),
             flowers: Vec::new(),
         }
+    }
+
+    #[cfg(feature = "egui")]
+    fn egui_ui(&mut self) {
+        self.egui_mq.run(&mut *self.ctx, |_ctx, egui_ctx| {
+            egui::TopBottomPanel::top("top bar").show(egui_ctx, |ui| {
+                ui.menu_button("File", |ui| {
+                    if ui.button("Quit").clicked() {
+                        unimplemented!("this is ironic");
+                    }
+                });
+            });
+
+            egui::Window::new("Debug").show(egui_ctx, |ui| {
+                // temporary, to show how to change values
+                ui.add(
+                    egui::Slider::new(&mut self.rotation_speed, (0.1)..=10.0).clamp_to_range(true),
+                );
+            });
+        });
+
+        self.egui_mq.draw(&mut *self.ctx);
     }
 }
 
@@ -135,9 +164,9 @@ impl EventHandler for App {
         let proj_matrix = Mat4::perspective_rh_gl(PI / 2.0, 1.0, 0.1, 10.0);
         let camera = Mat4::look_at_rh(
             Vec3::new(
-                2.0 * t.sin() as f32,
-                (t / 2.0).sin() as f32,
-                2.0 * t.cos() as f32,
+                2.0 * (t * self.rotation_speed).sin() as f32,
+                ((t * self.rotation_speed) / 2.0).sin() as f32,
+                2.0 * (t * self.rotation_speed).cos() as f32,
             ),
             Vec3::ZERO,
             Vec3::Y,
@@ -156,7 +185,51 @@ impl EventHandler for App {
         self.ctx.draw(0, self.model.1, 2);
 
         self.ctx.end_render_pass();
+
+        #[cfg(feature = "egui")]
+        self.egui_ui();
+
         self.ctx.commit_frame();
+    }
+
+    fn mouse_motion_event(&mut self, x: f32, y: f32) {
+        #[cfg(feature = "egui")]
+        self.egui_mq.mouse_motion_event(x, y);
+    }
+
+    fn mouse_wheel_event(&mut self, dx: f32, dy: f32) {
+        #[cfg(feature = "egui")]
+        self.egui_mq.mouse_wheel_event(dx, dy);
+    }
+
+    fn mouse_button_down_event(&mut self, mb: miniquad::MouseButton, x: f32, y: f32) {
+        #[cfg(feature = "egui")]
+        self.egui_mq.mouse_button_down_event(mb, x, y);
+    }
+
+    fn mouse_button_up_event(&mut self, mb: miniquad::MouseButton, x: f32, y: f32) {
+        #[cfg(feature = "egui")]
+        self.egui_mq.mouse_button_up_event(mb, x, y);
+    }
+
+    fn char_event(&mut self, character: char, _keymods: miniquad::KeyMods, _repeat: bool) {
+        #[cfg(feature = "egui")]
+        self.egui_mq.char_event(character);
+    }
+
+    fn key_down_event(
+        &mut self,
+        keycode: miniquad::KeyCode,
+        keymods: miniquad::KeyMods,
+        _repeat: bool,
+    ) {
+        #[cfg(feature = "egui")]
+        self.egui_mq.key_down_event(keycode, keymods);
+    }
+
+    fn key_up_event(&mut self, keycode: miniquad::KeyCode, keymods: miniquad::KeyMods) {
+        #[cfg(feature = "egui")]
+        self.egui_mq.key_up_event(keycode, keymods);
     }
 }
 
