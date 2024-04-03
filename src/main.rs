@@ -4,13 +4,15 @@ use glam::{I64Vec3, Mat4, Vec3};
 use miniquad::{
     conf, date, window, Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, Comparison,
     CullFace, EventHandler, PassAction, Pipeline, PipelineParams, RenderingBackend, ShaderSource,
-    UniformsSource, VertexAttribute, VertexFormat,
+    UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
 
 mod models;
 
 type Voxel = I64Vec3;
 type Model = Vec<Voxel>;
+
+const MAX_VOXELS: usize = 1000;
 
 struct App {
     ctx: Box<dyn RenderingBackend>,
@@ -35,18 +37,6 @@ impl App {
             )
             .unwrap();
 
-        let pipeline = ctx.new_pipeline(
-            &[BufferLayout::default()],
-            &[VertexAttribute::new("in_position", VertexFormat::Float3)],
-            shader,
-            PipelineParams {
-                depth_test: Comparison::Less,
-                depth_write: true,
-                cull_face: CullFace::Back,
-                ..Default::default()
-            },
-        );
-
         let d = 0.5;
         #[rustfmt::skip]
         let vertices = [
@@ -59,7 +49,7 @@ impl App {
             Vec3::new(-d,  d,  d),
             Vec3::new( d,  d,  d),
         ];
-        let vertex_buffer = ctx.new_buffer(
+        let geometry_vertex_buffer = ctx.new_buffer(
             BufferType::VertexBuffer,
             BufferUsage::Immutable,
             BufferSource::slice(&vertices),
@@ -67,23 +57,17 @@ impl App {
         #[rustfmt::skip]
         let indices = [
             // Back
-            0, 2, 1,
-            1, 2, 3,
+            0, 2, 1,   1, 2, 3,
             // Front
-            4, 5, 7,
-            4, 7, 6,
+            4, 5, 7,   4, 7, 6,
             // Right
-            1, 3, 5,
-            5, 3, 7,
+            1, 3, 5,   5, 3, 7,
             // Left
-            4, 6, 0,
-            0, 6, 2,
+            4, 6, 0,   0, 6, 2,
             // Top
-            7, 3, 6,
-            6, 3, 2,
+            7, 3, 6,   6, 3, 2,
             // Bottom
-            5, 4, 1,
-            4, 0, 1,
+            5, 4, 1,   4, 0, 1,
 
         ];
         let index_buffer = ctx.new_buffer(
@@ -92,11 +76,38 @@ impl App {
             BufferSource::slice(&indices),
         );
 
+        let positions_vertex_buffer = ctx.new_buffer(
+            BufferType::VertexBuffer,
+            BufferUsage::Stream, // TODO: dynamic?
+            BufferSource::empty::<Vec3>(MAX_VOXELS),
+        );
+
         let bindings = Bindings {
-            vertex_buffers: vec![vertex_buffer],
+            vertex_buffers: vec![geometry_vertex_buffer, positions_vertex_buffer],
             index_buffer,
             images: vec![],
         };
+
+        let pipeline = ctx.new_pipeline(
+            &[
+                BufferLayout::default(),
+                BufferLayout {
+                    step_func: VertexStep::PerInstance,
+                    ..BufferLayout::default()
+                },
+            ],
+            &[
+                VertexAttribute::with_buffer("in_position", VertexFormat::Float3, 0),
+                VertexAttribute::with_buffer("in_inst_position", VertexFormat::Float3, 1), // TODO: VertexFormat::Int32?
+            ],
+            shader,
+            PipelineParams {
+                depth_test: Comparison::Less,
+                depth_write: true,
+                cull_face: CullFace::Back,
+                ..Default::default()
+            },
+        );
 
         Self {
             ctx,
@@ -138,7 +149,11 @@ impl EventHandler for App {
                 proj_matrix,
                 model_matrix: camera,
             }));
-        self.ctx.draw(0, self.model.1, 1);
+        self.ctx.buffer_update(
+            self.model.0.vertex_buffers[1],
+            BufferSource::slice(&[Vec3::new(0.0, 0.0, 0.0), Vec3::new(0.0, 1.0, 1.0)]),
+        );
+        self.ctx.draw(0, self.model.1, 2);
 
         self.ctx.end_render_pass();
         self.ctx.commit_frame();
