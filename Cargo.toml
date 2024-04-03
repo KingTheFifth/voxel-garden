@@ -1,0 +1,10 @@
+[package]
+name = "project"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+glam = { version = "0.25.0", features = ["scalar-math"] }
+miniquad = "0.4.0"
+tobj = { version = "4.0.1", default-features = false }
+# image = { version = "0.24.9", default-features = false, features = ["tga"] }
