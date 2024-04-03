@@ -1,0 +1,83 @@
+image: rust:alpine
+
+variables:
+  CARGO_HOME: $CI_PROJECT_DIR/cargo
+  EPHEMERAL_BRANCHES_PATH: preview # subpath where previews of pages will be built
+
+stages:
+  - build
+  - test
+  - deploy
+
+check:cargo-fmt:
+  stage: test
+  before_script: |
+      rustup component add rustfmt
+  script:
+    # pass --check to rustfmt to error if un-formatted
+    - cargo fmt -- --check
+
+build:linux:
+  stage: build
+  before_script: |
+      apk add build-base
+  script: |
+    cargo build --all-features
+
+# apk add build-base wabt
+# wasm-strip target/wasm32-unknown-unknown/release/voxel-garden.wasm
+build:wasm:
+  stage: build
+  before_script: |
+    apk add build-base
+    rustup target add wasm32-unknown-unknown
+    cargo install wasm-bindgen-cli
+  script: |
+    cargo build --release --target wasm32-unknown-unknown --all-features
+    mkdir -p public
+    cp target/wasm32-unknown-unknown/release/voxel-garden.wasm public/
+
+# deploy on main branch
+pages:
+  stage: deploy
+  dependencies: [build:wasm]
+  needs: [build:wasm]
+  script: |
+    true
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: always
+    - when: never
+
+# deploy preview on merge requests
+pages_preview:
+  stage: deploy
+  dependencies: [build:wasm]
+  needs: [build:wasm]
+  script: |
+    true
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_MERGE_REQUEST_IID
+      when: always
+    - when: manual
+  environment:
+    name: preview/${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME}
+    url: https://${CI_PROJECT_NAMESPACE}.gitlab.io/-/${CI_PROJECT_NAME}/-/jobs/${CI_JOB_ID}/artifacts/public/index.html
+    on_stop: pages_preview_stop
+
+pages_preview_stop:
+  stage: deploy
+  rules:
+    - if: $CI_MERGE_REQUEST_IID
+      when: manual
+  allow_failure: true
+  environment:
+    name: preview/${CI_PROJECT_NAME}/${CI_COMMIT_REF_NAME}
+  script: |
+    echo "bye"
