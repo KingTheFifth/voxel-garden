@@ -36,6 +36,9 @@ build:wasm:
     cargo build --release --target wasm32-unknown-unknown --all-features
     mkdir -p public
     cp target/wasm32-unknown-unknown/release/voxel-garden.wasm public/
+  artifacts:
+    paths:
+      - public
 
 # deploy on main branch
 pages:
