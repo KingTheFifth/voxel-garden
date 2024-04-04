@@ -8,6 +8,7 @@ use miniquad::{
 };
 
 mod models;
+use models::terrarin::generate_flat_terrain;
 
 type Voxel = I64Vec3;
 type Model = Vec<Voxel>;
@@ -23,6 +24,7 @@ struct App {
 
     rotation_speed: f64,
 
+    ground: Model,
     flowers: Vec<Model>,
     model: (Bindings, i32),
     // Beware of the pipeline
@@ -121,6 +123,7 @@ impl App {
             prev_t: 0.0,
             rotation_speed: 1.0,
             model: (bindings, indices.len() as i32),
+            ground: generate_flat_terrain(-5, 10, 10),
             flowers: Vec::new(),
         }
     }
