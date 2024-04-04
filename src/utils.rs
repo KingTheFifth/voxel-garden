@@ -5,7 +5,7 @@ use glam::{Mat4, Vec3};
 
 pub fn arb_rotate(axis: Vec3, angle: f32) -> Mat4 {
     // Check if parrallel to Z
-    if axis.x < EPSILON || axis.x > -EPSILON || axis.y < EPSILON || axis.y > -EPSILON {
+    if axis.x < EPSILON && axis.x > -EPSILON && axis.y < EPSILON && axis.y > -EPSILON {
         if axis.z > 0.0 {
             return glam::Mat4::from_rotation_z(angle);
         } else {
