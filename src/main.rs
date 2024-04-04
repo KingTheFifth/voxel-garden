@@ -8,7 +8,7 @@ use miniquad::{
 };
 
 mod models;
-use models::terrarin::generate_flat_terrain;
+use models::terrain::generate_flat_terrain;
 
 type Voxel = I64Vec3;
 type Model = Vec<Voxel>;

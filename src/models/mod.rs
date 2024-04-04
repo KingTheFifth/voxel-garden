@@ -1,2 +1,2 @@
 pub mod flower;
-pub mod terrarin;
+pub mod terrain;
