@@ -1,7 +1,7 @@
 #version 330
 
-in  vec4 v_position;
+in vec4 out_inst_color;
 
 void main(void) {
-    gl_FragColor = vec4(vec3(v_position), 1.0);
+    gl_FragColor = out_inst_color;
 }
