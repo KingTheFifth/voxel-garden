@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use glam::{I64Vec3, Mat4, Vec3, Vec4};
+use glam::{I64Vec3, Mat4, Vec3, Vec3Swizzles, Vec4};
 use miniquad::{
     conf, date, window, Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, Comparison,
     CullFace, EventHandler, PassAction, Pipeline, PipelineParams, RenderingBackend, ShaderSource,
@@ -130,7 +130,7 @@ impl App {
             prev_t: 0.0,
             rotation_speed: 1.0,
             model: (bindings, indices.len() as i32),
-            ground: generate_flat_terrain(-5, 10, 10),
+            ground: generate_flat_terrain(0, 10, 10),
             flowers: Vec::new(),
         }
     }
@@ -191,14 +191,18 @@ impl EventHandler for App {
         self.ctx.buffer_update(
             self.model.0.vertex_buffers[1],
             BufferSource::slice(&[
-                InstanceData {
-                    position: Vec3::new(0.0, 1.0, 1.0),
-                    color: Vec4::new(1.0, 1.0, 1.0, 1.0),
-                },
-                InstanceData {
-                    position: Vec3::new(0.0, 0.0, 0.0),
-                    color: Vec4::new(0.0, 1.0, 1.0, 1.0),
-                },
+                self.ground.iter().map(|voxel| InstanceData {
+                    position: Vec3::new(voxel.x as f32, voxel.y as f32, voxel.z as f32),
+                    color: Vec4::new(0.1, 0.9, 0.9, 1.),
+                }),
+                //InstanceData {
+                //    position: Vec3::new(0.0, 1.0, 1.0),
+                //    color: Vec4::new(1.0, 1.0, 1.0, 1.0),
+                //},
+                //InstanceData {
+                //    position: Vec3::new(0.0, 0.0, 0.0),
+                //    color: Vec4::new(0.0, 1.0, 1.0, 1.0),
+                //},
             ]),
         );
         self.ctx.draw(0, self.model.1, 2);
