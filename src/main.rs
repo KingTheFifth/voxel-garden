@@ -6,11 +6,12 @@ use miniquad::{
     CullFace, EventHandler, PassAction, Pipeline, PipelineParams, RenderingBackend, ShaderSource,
     UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
+use models::flower::{flower, Flower};
 
 mod models;
+mod util;
 
-type Voxel = I64Vec3;
-type Model = Vec<Voxel>;
+pub type Voxel = I64Vec3;
 
 const MAX_VOXELS: usize = 1000;
 
@@ -23,7 +24,7 @@ struct App {
 
     rotation_speed: f64,
 
-    flowers: Vec<Model>,
+    flowers: Vec<Flower>,
     model: (Bindings, i32),
     // Beware of the pipeline
 }
@@ -128,7 +129,7 @@ impl App {
             prev_t: 0.0,
             rotation_speed: 1.0,
             model: (bindings, indices.len() as i32),
-            flowers: Vec::new(),
+            flowers: vec![flower(0)],
         }
     }
 
@@ -152,6 +153,29 @@ impl App {
         });
 
         self.egui_mq.draw(&mut *self.ctx);
+    }
+
+    fn get_voxel_instances(&self) -> Vec<InstanceData> {
+        self.flowers.iter().map(|_flower| todo!()).collect()
+        // InstanceData {
+        //     position: Vec3::new(0.0, 1.0, 1.0),
+        //     color: Vec4::new(1.0, 1.0, 1.0, 1.0),
+        // },
+        // InstanceData {
+        //     position: Vec3::new(0.0, 0.0, 0.0),
+        //     color: Vec4::new(0.0, 1.0, 1.0, 1.0),
+        // },
+    }
+
+    fn get_debug_points(&self) -> Vec<InstanceData> {
+        self.flowers
+            .iter()
+            .flat_map(|flower| &flower.debug_points)
+            .map(|(pos, color)| InstanceData {
+                position: Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32),
+                color: *color,
+            })
+            .collect()
     }
 }
 
@@ -185,20 +209,10 @@ impl EventHandler for App {
                 proj_matrix,
                 model_matrix: camera,
             }));
-        self.ctx.buffer_update(
-            self.model.0.vertex_buffers[1],
-            BufferSource::slice(&[
-                InstanceData {
-                    position: Vec3::new(0.0, 1.0, 1.0),
-                    color: Vec4::new(1.0, 1.0, 1.0, 1.0),
-                },
-                InstanceData {
-                    position: Vec3::new(0.0, 0.0, 0.0),
-                    color: Vec4::new(0.0, 1.0, 1.0, 1.0),
-                },
-            ]),
-        );
-        self.ctx.draw(0, self.model.1, 2);
+        let voxels = self.get_debug_points();
+        self.ctx
+            .buffer_update(self.model.0.vertex_buffers[1], BufferSource::slice(&voxels));
+        self.ctx.draw(0, self.model.1, voxels.len() as i32);
 
         self.ctx.end_render_pass();
 
