@@ -14,7 +14,9 @@ use models::terrarin::generate_flat_terrain;
 type Voxel = I64Vec3;
 type Model = Vec<Voxel>;
 
-const MAX_VOXELS: usize = 1000;
+// TODO: figure out why MAX_VOXELS must be much larger than total number of voxels
+const MAX_VOXELS: usize = 1000000;
+const MAX_HEIGHT: f64 = 40.;
 
 struct App {
     ctx: Box<dyn RenderingBackend>,
@@ -24,6 +26,8 @@ struct App {
     prev_t: f64,
 
     rotation_speed: f64,
+
+    terrain_noise: Perlin,
 
     ground: Model,
     flowers: Vec<Model>,
@@ -131,7 +135,8 @@ impl App {
             prev_t: 0.0,
             rotation_speed: 1.0,
             model: (bindings, indices.len() as i32),
-            ground: generate_flat_terrain(0, 20, 20),
+            terrain_noise: Perlin::new(1),
+            ground: generate_flat_terrain(-10, 100, 20, 100, MAX_HEIGHT, Perlin::new(758)),
             flowers: Vec::new(),
         }
     }
@@ -262,11 +267,6 @@ impl EventHandler for App {
 }
 
 fn main() {
-    for i in 0..100 {
-        let perlin = Perlin::new(1);
-        let val = perlin.get([i as f64, i as f64, i as f64, i as f64]);
-        println!("{:?}", val);
-    }
     let conf = conf::Conf {
         window_title: "voxel garden".to_string(),
         window_width: 800,
