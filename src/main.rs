@@ -1,3 +1,4 @@
+use noise::{NoiseFn, Perlin, Seedable};
 use std::f32::consts::PI;
 
 use glam::{I64Vec3, Mat4, Vec3};
@@ -234,6 +235,11 @@ impl EventHandler for App {
 }
 
 fn main() {
+    for i in 0..100 {
+        let perlin = Perlin::new(1);
+        let val = perlin.get([i as f64, i as f64, i as f64, i as f64]);
+        println!("{:?}", val);
+    }
     let conf = conf::Conf {
         window_title: "voxel garden".to_string(),
         window_width: 800,
