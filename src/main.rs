@@ -105,7 +105,7 @@ impl App {
             &[
                 VertexAttribute::with_buffer("in_position", VertexFormat::Float3, 0),
                 VertexAttribute::with_buffer("in_inst_position", VertexFormat::Float3, 1), // TODO: VertexFormat::Int32?
-                VertexAttribute::with_buffer("in_inst_color", VertexFormat::Float4, 1), // TODO: VertexFormat::Int32?
+                VertexAttribute::with_buffer("in_inst_color", VertexFormat::Float4, 1),
             ],
             shader,
             PipelineParams {
