@@ -31,6 +31,7 @@ struct App {
     mouse_left_down: bool,
     mouse_right_down: bool,
     mouse_downpos: (f32, f32),
+    mouse_prevpos: (f32, f32),
 
     trackball_matrix: Mat4,
 }
@@ -132,6 +133,7 @@ impl App {
             mouse_left_down: false,
             mouse_right_down: false,
             mouse_downpos: (0.0, 0.0),
+            mouse_prevpos: (0.0, 0.0),
             trackball_matrix: Mat4::IDENTITY,
         }
     }
@@ -159,7 +161,7 @@ impl App {
     }
 
     fn camera_matrix(&mut self) -> Mat4 {
-        let t = self.prev_t;
+        let t = 0.0;
         Mat4::look_at_rh(
             Vec3::new(
                 2.0 * (t * self.rotation_speed).sin() as f32,
@@ -171,14 +173,14 @@ impl App {
         )
     }
 
-    fn trackball_control(&mut self, start_point: (f32, f32), end_point: (f32, f32)) {
+    fn trackball_control(&mut self, screen_pos: (f32, f32)) {
         let axis = Vec3::new(
-            start_point.1 - end_point.1,
-            end_point.0 - start_point.0,
+            screen_pos.1 - self.mouse_prevpos.1,
+            self.mouse_prevpos.0 - screen_pos.0,
             0.0,
-        ) * -1.0;
+        );
         let axis = Mat3::from_mat4(self.camera_matrix()).inverse() * axis;
-        self.trackball_matrix = arb_rotate(axis, axis.length() / 50.0);
+        self.trackball_matrix = arb_rotate(axis, axis.length() / 50.0) * self.trackball_matrix;
     }
 }
 
@@ -222,8 +224,10 @@ impl EventHandler for App {
         self.egui_mq.mouse_motion_event(x, y);
 
         if self.mouse_left_down {
-            self.trackball_control(self.mouse_downpos, (x, y));
+            self.trackball_control((x, y));
         }
+
+        self.mouse_prevpos = (x, y);
     }
 
     fn mouse_wheel_event(&mut self, dx: f32, dy: f32) {
@@ -236,6 +240,7 @@ impl EventHandler for App {
         self.egui_mq.mouse_button_down_event(mb, x, y);
 
         self.mouse_downpos = (x, y);
+        self.mouse_prevpos = (x, y);
         match mb {
             miniquad::MouseButton::Left => self.mouse_left_down = true,
             miniquad::MouseButton::Right => self.mouse_right_down = true,
