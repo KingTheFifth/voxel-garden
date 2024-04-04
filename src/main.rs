@@ -130,7 +130,7 @@ impl App {
             prev_t: 0.0,
             rotation_speed: 1.0,
             model: (bindings, indices.len() as i32),
-            ground: generate_flat_terrain(0, 10, 10),
+            ground: generate_flat_terrain(0, 20, 20),
             flowers: Vec::new(),
         }
     }
@@ -171,12 +171,12 @@ impl EventHandler for App {
         // Beware the pipeline
         self.ctx.apply_pipeline(&self.pipeline);
 
-        let proj_matrix = Mat4::perspective_rh_gl(PI / 2.0, 1.0, 0.1, 10.0);
+        let proj_matrix = Mat4::perspective_rh_gl(PI / 2.0, 1.0, 0.1, 1000.0);
         let camera = Mat4::look_at_rh(
             Vec3::new(
-                2.0 * (t * self.rotation_speed).sin() as f32,
-                ((t * self.rotation_speed) / 2.0).sin() as f32,
-                2.0 * (t * self.rotation_speed).cos() as f32,
+                10.0 * 2.0 * (t * self.rotation_speed).sin() as f32,
+                10.0 * ((t * self.rotation_speed) / 2.0).sin() as f32,
+                10.0 * 2.0 * (t * self.rotation_speed).cos() as f32,
             ),
             Vec3::ZERO,
             Vec3::Y,
@@ -190,11 +190,15 @@ impl EventHandler for App {
             }));
         self.ctx.buffer_update(
             self.model.0.vertex_buffers[1],
-            BufferSource::slice(&[
-                self.ground.iter().map(|voxel| InstanceData {
-                    position: Vec3::new(voxel.x as f32, voxel.y as f32, voxel.z as f32),
-                    color: Vec4::new(0.1, 0.9, 0.9, 1.),
-                }),
+            BufferSource::slice(
+                &self
+                    .ground
+                    .iter()
+                    .map(|voxel| InstanceData {
+                        position: Vec3::new(voxel.x as f32, voxel.y as f32, voxel.z as f32),
+                        color: Vec4::new(0.1, 0.5, 0.2, 1.0),
+                    })
+                    .collect::<Vec<_>>(),
                 //InstanceData {
                 //    position: Vec3::new(0.0, 1.0, 1.0),
                 //    color: Vec4::new(1.0, 1.0, 1.0, 1.0),
@@ -203,9 +207,9 @@ impl EventHandler for App {
                 //    position: Vec3::new(0.0, 0.0, 0.0),
                 //    color: Vec4::new(0.0, 1.0, 1.0, 1.0),
                 //},
-            ]),
+            ),
         );
-        self.ctx.draw(0, self.model.1, 2);
+        self.ctx.draw(0, self.model.1, self.ground.len() as i32);
 
         self.ctx.end_render_pass();
 
