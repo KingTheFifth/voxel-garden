@@ -192,12 +192,12 @@ impl EventHandler for App {
         // Beware the pipeline
         self.ctx.apply_pipeline(&self.pipeline);
 
-        let proj_matrix = Mat4::perspective_rh_gl(PI / 2.0, 1.0, 0.1, 10.0);
+        let proj_matrix = Mat4::perspective_rh_gl(PI / 2.0, 1.0, 0.1, 1000.0);
         let camera = Mat4::look_at_rh(
             Vec3::new(
-                2.0 * (t * self.rotation_speed).sin() as f32,
-                ((t * self.rotation_speed) / 2.0).sin() as f32,
-                2.0 * (t * self.rotation_speed).cos() as f32,
+                10.0 * 2.0 * (t * self.rotation_speed).sin() as f32,
+                10.0 * ((t * self.rotation_speed) / 2.0).sin() as f32,
+                10.0 * 2.0 * (t * self.rotation_speed).cos() as f32,
             ),
             Vec3::ZERO,
             Vec3::Y,
