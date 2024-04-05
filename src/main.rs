@@ -6,7 +6,10 @@ use miniquad::{
     CullFace, EventHandler, PassAction, Pipeline, PipelineParams, RenderingBackend, ShaderSource,
     UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
-use models::flower::{flower, Flower};
+use models::{
+    flower::{flower, Flower},
+    primitives::line,
+};
 
 mod models;
 mod util;
@@ -25,6 +28,7 @@ struct App {
     rotation_speed: f64,
 
     flowers: Vec<Flower>,
+    other_voxels: Vec<Voxel>,
     model: (Bindings, i32),
     // Beware of the pipeline
 }
@@ -130,6 +134,13 @@ impl App {
             rotation_speed: 1.0,
             model: (bindings, indices.len() as i32),
             flowers: vec![flower(0)],
+            other_voxels: line(Voxel::new(0, 0, 0), Voxel::new(10, 5, 4))
+                .iter()
+                .chain((line(Voxel::new(0, 0, 0), Voxel::new(11, 5, 4))).iter())
+                .chain((line(Voxel::new(0, 0, 0), Voxel::new(10, 6, 4))).iter())
+                .chain((line(Voxel::new(0, 0, 0), Voxel::new(10, 5, 5))).iter())
+                .cloned()
+                .collect(),
         }
     }
 
@@ -168,14 +179,25 @@ impl App {
     }
 
     fn get_debug_points(&self) -> Vec<InstanceData> {
-        self.flowers
+        let flowers = self
+            .flowers
             .iter()
             .flat_map(|flower| &flower.debug_points)
             .map(|(pos, color)| InstanceData {
                 position: Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32),
                 color: *color,
-            })
-            .collect()
+            });
+        let tot_other_voxels = self.other_voxels.len();
+        let other_voxels = self
+            .other_voxels
+            .iter()
+            .enumerate()
+            .map(|(i, pos)| InstanceData {
+                position: Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32),
+                color: Vec4::new((i as f32 / tot_other_voxels as f32), 0.8, 1.0, 1.0),
+            });
+
+        flowers.chain(other_voxels).collect()
     }
 }
 
@@ -195,9 +217,9 @@ impl EventHandler for App {
         let proj_matrix = Mat4::perspective_rh_gl(PI / 2.0, 1.0, 0.1, 1000.0);
         let camera = Mat4::look_at_rh(
             Vec3::new(
-                10.0 * 2.0 * (t * self.rotation_speed).sin() as f32,
-                10.0 * ((t * self.rotation_speed) / 2.0).sin() as f32,
-                10.0 * 2.0 * (t * self.rotation_speed).cos() as f32,
+                20.0 * 2.0 * (t * self.rotation_speed).sin() as f32,
+                20.0,
+                20.0 * 2.0 * (t * self.rotation_speed).cos() as f32,
             ),
             Vec3::ZERO,
             Vec3::Y,
