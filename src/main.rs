@@ -14,7 +14,6 @@ use models::terrarin::generate_flat_terrain;
 use models::terrarin::generate_terrain;
 mod utils;
 
-type Voxel = Vec3;
 type Model = Vec<Voxel>;
 
 // TODO: figure out why MAX_VOXELS must be much larger than total number of voxels
@@ -42,6 +41,17 @@ struct App {
     mouse_prevpos: (f32, f32),
 
     trackball_matrix: Mat4,
+}
+
+struct Voxel {
+    position: Vec3,
+    color: Vec4,
+}
+
+impl Voxel {
+    fn new(position: Vec3, color: Vec4) -> Voxel {
+        Voxel { position, color }
+    }
 }
 
 #[repr(C)]
@@ -136,6 +146,7 @@ impl App {
             },
         );
 
+        let terrain_noise = Perlin::new(555);
         Self {
             #[cfg(feature = "egui")]
             egui_mq: egui_miniquad::EguiMq::new(&mut *ctx),
@@ -144,8 +155,8 @@ impl App {
             prev_t: 0.0,
             rotation_speed: 1.0,
             model: (bindings, indices.len() as i32),
-            terrain_noise: Perlin::new(1),
-            ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, Perlin::new(555)),
+            terrain_noise,
+            ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, terrain_noise),
             flowers: Vec::new(),
             mouse_left_down: false,
             mouse_right_down: false,
@@ -220,8 +231,13 @@ impl EventHandler for App {
                     .ground
                     .iter()
                     .map(|voxel| InstanceData {
-                        position: Vec3::new(voxel.x, voxel.y, voxel.z),
-                        color: Vec4::new(0.1, 0.5, 0.2, 1.0),
+                        position: Vec3::new(voxel.position.x, voxel.position.y, voxel.position.z),
+                        color: Vec4::new(
+                            voxel.color.x,
+                            voxel.color.y,
+                            voxel.color.z,
+                            voxel.color.w,
+                        ),
                     })
                     .collect::<Vec<_>>(),
                 //InstanceData {

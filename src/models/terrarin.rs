@@ -1,4 +1,5 @@
 use crate::Voxel;
+use glam::{Vec3, Vec4};
 use noise::{NoiseFn, Perlin};
 
 pub fn generate_flat_terrain(pos_x: i64, pos_z: i64, width: i64, depth: i64) -> Vec<Voxel> {
@@ -6,7 +7,9 @@ pub fn generate_flat_terrain(pos_x: i64, pos_z: i64, width: i64, depth: i64) -> 
 
     for z in 0..depth {
         for x in 0..width {
-            voxels.push(Voxel::new((pos_x + x) as f32, 0., (pos_z + z) as f32));
+            let position = Vec3::new((pos_x + x) as f32, 0., (pos_z + z) as f32);
+            let color = Vec4::new(0.1, 0.5, 0.2, 1.0);
+            voxels.push(Voxel::new(position, color));
         }
     }
     return voxels;
@@ -33,11 +36,9 @@ pub fn generate_terrain(
                 let height = sample * max_height;
 
                 if y <= height as i64 {
-                    voxels.push(Voxel::new(
-                        (pos_x + x) as f32,
-                        height as f32,
-                        (pos_z + z) as f32,
-                    ));
+                    let color = Vec4::new(0.1, 0.5, 0.2, 1.0);
+                    let position = Vec3::new((pos_x + x) as f32, height as f32, (pos_z + z) as f32);
+                    voxels.push(Voxel::new(position, color));
                 }
             }
         }
