@@ -10,12 +10,13 @@ use miniquad::{
 
 mod models;
 use models::terrarin::generate_flat_terrain;
+use models::terrarin::generate_terrain;
 
 type Voxel = I64Vec3;
 type Model = Vec<Voxel>;
 
 // TODO: figure out why MAX_VOXELS must be much larger than total number of voxels
-const MAX_VOXELS: usize = 1000000;
+const MAX_VOXELS: usize = 100000000;
 const MAX_HEIGHT: f64 = 40.;
 
 struct App {
@@ -136,7 +137,7 @@ impl App {
             rotation_speed: 1.0,
             model: (bindings, indices.len() as i32),
             terrain_noise: Perlin::new(1),
-            ground: generate_flat_terrain(-10, 100, 20, 100, MAX_HEIGHT, Perlin::new(758)),
+            ground: generate_terrain(0, 0, 200, 20, 200, 20.0, Perlin::new(555)),
             flowers: Vec::new(),
         }
     }
@@ -180,9 +181,9 @@ impl EventHandler for App {
         let proj_matrix = Mat4::perspective_rh_gl(PI / 2.0, 1.0, 0.1, 1000.0);
         let camera = Mat4::look_at_rh(
             Vec3::new(
-                10.0 * 2.0 * (t * self.rotation_speed).sin() as f32,
-                10.0 * ((t * self.rotation_speed) / 2.0).sin() as f32,
-                10.0 * 2.0 * (t * self.rotation_speed).cos() as f32,
+                100.0 * 2.0 * (t * self.rotation_speed).sin() as f32,
+                100.0 * ((t * self.rotation_speed) / 2.0).sin() as f32,
+                100.0 * 2.0 * (t * self.rotation_speed).cos() as f32,
             ),
             Vec3::ZERO,
             Vec3::Y,
