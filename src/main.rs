@@ -1,13 +1,15 @@
 use std::f32::consts::PI;
 
-use glam::{I64Vec3, Mat4, Vec3, Vec4};
+use glam::{I64Vec3, Mat3, Mat4, Vec3, Vec4};
 use miniquad::{
     conf, date, window, Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, Comparison,
     CullFace, EventHandler, PassAction, Pipeline, PipelineParams, RenderingBackend, ShaderSource,
     UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
+use utils::arb_rotate;
 
 mod models;
+mod utils;
 
 type Voxel = I64Vec3;
 type Model = Vec<Voxel>;
@@ -26,6 +28,12 @@ struct App {
     flowers: Vec<Model>,
     model: (Bindings, i32),
     // Beware of the pipeline
+    mouse_left_down: bool,
+    mouse_right_down: bool,
+    mouse_downpos: (f32, f32),
+    mouse_prevpos: (f32, f32),
+
+    trackball_matrix: Mat4,
 }
 
 #[repr(C)]
@@ -129,6 +137,11 @@ impl App {
             rotation_speed: 1.0,
             model: (bindings, indices.len() as i32),
             flowers: Vec::new(),
+            mouse_left_down: false,
+            mouse_right_down: false,
+            mouse_downpos: (0.0, 0.0),
+            mouse_prevpos: (0.0, 0.0),
+            trackball_matrix: Mat4::IDENTITY,
         }
     }
 
@@ -153,6 +166,24 @@ impl App {
 
         self.egui_mq.draw(&mut *self.ctx);
     }
+
+    fn camera_matrix(&mut self) -> Mat4 {
+        Mat4::look_at_rh(
+            Vec3::new(0.0, 0.0, 5.0),
+            Vec3::ZERO,
+            Vec3::Y,
+        )
+    }
+
+    fn trackball_control(&mut self, screen_pos: (f32, f32)) {
+        let axis = Vec3::new(
+            screen_pos.1 - self.mouse_prevpos.1,
+            self.mouse_prevpos.0 - screen_pos.0,
+            0.0,
+        );
+        let axis = Mat3::from_mat4(self.camera_matrix()).inverse() * axis;
+        self.trackball_matrix = arb_rotate(axis, axis.length() / 50.0) * self.trackball_matrix;
+    }
 }
 
 impl EventHandler for App {
@@ -169,16 +200,7 @@ impl EventHandler for App {
         self.ctx.apply_pipeline(&self.pipeline);
 
         let proj_matrix = Mat4::perspective_rh_gl(PI / 2.0, 1.0, 0.1, 10.0);
-        let camera = Mat4::look_at_rh(
-            Vec3::new(
-                2.0 * (t * self.rotation_speed).sin() as f32,
-                ((t * self.rotation_speed) / 2.0).sin() as f32,
-                2.0 * (t * self.rotation_speed).cos() as f32,
-            ),
-            Vec3::ZERO,
-            Vec3::Y,
-        );
-
+        let camera = self.camera_matrix() * self.trackball_matrix;
         self.ctx.apply_bindings(&self.model.0);
         self.ctx
             .apply_uniforms(UniformsSource::table(&shader::Uniforms {
@@ -211,6 +233,12 @@ impl EventHandler for App {
     fn mouse_motion_event(&mut self, x: f32, y: f32) {
         #[cfg(feature = "egui")]
         self.egui_mq.mouse_motion_event(x, y);
+
+        if self.mouse_left_down {
+            self.trackball_control((x, y));
+        }
+
+        self.mouse_prevpos = (x, y);
     }
 
     fn mouse_wheel_event(&mut self, dx: f32, dy: f32) {
@@ -221,11 +249,25 @@ impl EventHandler for App {
     fn mouse_button_down_event(&mut self, mb: miniquad::MouseButton, x: f32, y: f32) {
         #[cfg(feature = "egui")]
         self.egui_mq.mouse_button_down_event(mb, x, y);
+
+        self.mouse_downpos = (x, y);
+        self.mouse_prevpos = (x, y);
+        match mb {
+            miniquad::MouseButton::Left => self.mouse_left_down = true,
+            miniquad::MouseButton::Right => self.mouse_right_down = true,
+            _ => {}
+        }
     }
 
     fn mouse_button_up_event(&mut self, mb: miniquad::MouseButton, x: f32, y: f32) {
         #[cfg(feature = "egui")]
         self.egui_mq.mouse_button_up_event(mb, x, y);
+
+        match mb {
+            miniquad::MouseButton::Left => self.mouse_left_down = false,
+            miniquad::MouseButton::Right => self.mouse_right_down = false,
+            _ => {}
+        }
     }
 
     fn char_event(&mut self, character: char, _keymods: miniquad::KeyMods, _repeat: bool) {
