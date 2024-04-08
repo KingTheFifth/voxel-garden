@@ -12,7 +12,7 @@ mod models;
 use models::terrarin::generate_flat_terrain;
 use models::terrarin::generate_terrain;
 
-type Voxel = I64Vec3;
+type Voxel = Vec3;
 type Model = Vec<Voxel>;
 
 // TODO: figure out why MAX_VOXELS must be much larger than total number of voxels
@@ -137,7 +137,7 @@ impl App {
             rotation_speed: 1.0,
             model: (bindings, indices.len() as i32),
             terrain_noise: Perlin::new(1),
-            ground: generate_terrain(0, 0, 200, 20, 200, 20.0, Perlin::new(555)),
+            ground: generate_terrain(0, 0, 200, 20, 200, 0.013, 20.0, Perlin::new(555)),
             flowers: Vec::new(),
         }
     }
@@ -202,7 +202,7 @@ impl EventHandler for App {
                     .ground
                     .iter()
                     .map(|voxel| InstanceData {
-                        position: Vec3::new(voxel.x as f32, voxel.y as f32, voxel.z as f32),
+                        position: Vec3::new(voxel.x, voxel.y, voxel.z),
                         color: Vec4::new(0.1, 0.5, 0.2, 1.0),
                     })
                     .collect::<Vec<_>>(),
