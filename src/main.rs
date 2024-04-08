@@ -121,7 +121,7 @@ impl App {
                 ..Default::default()
             },
         );
-        let voxels = primitives::line_cross(Voxel::ZERO, Voxel::new(10, 5, 3));
+        let voxels = primitives::bresenham(Voxel::ZERO, Voxel::new(10, 5, 3));
         dbg!(&voxels);
 
         Self {
@@ -173,12 +173,12 @@ impl EventHandler for App {
         // Beware the pipeline
         self.ctx.apply_pipeline(&self.pipeline);
 
-        let proj_matrix = Mat4::perspective_rh_gl(PI / 2.0, 1.0, 0.1, 10.0);
+        let proj_matrix = Mat4::perspective_rh_gl(PI / 2.0, 1.0, 0.1, 1000.0);
         let camera = Mat4::look_at_rh(
             Vec3::new(
-                2.0 * (t * self.rotation_speed).sin() as f32,
-                ((t * self.rotation_speed) / 2.0).sin() as f32,
-                2.0 * (t * self.rotation_speed).cos() as f32,
+                10.0 * 2.0 * (t * self.rotation_speed).sin() as f32,
+                10.0 * ((t * self.rotation_speed) / 2.0).sin() as f32,
+                10.0 * 2.0 * (t * self.rotation_speed).cos() as f32,
             ),
             Vec3::ZERO,
             Vec3::Y,
@@ -192,15 +192,17 @@ impl EventHandler for App {
             }));
         self.ctx.buffer_update(
             self.model.0.vertex_buffers[1],
-            BufferSource::slice(&[self
-                .voxels
-                .iter()
-                .copied()
-                .map(|Voxel { x, y, z }| InstanceData {
-                    position: Vec3::new(x as f32, y as f32, z as f32),
-                    color: Vec4::new(1.0, 1.0, 1.0, 1.0),
-                })
-                .collect::<Vec<_>>()]),
+            BufferSource::slice(
+                &self
+                    .voxels
+                    .iter()
+                    .copied()
+                    .map(|Voxel { x, y, z }| InstanceData {
+                        position: Vec3::new(x as f32, y as f32, z as f32),
+                        color: Vec4::new(1.0, 1.0, 1.0, 1.0),
+                    })
+                    .collect::<Vec<_>>(),
+            ),
         );
         self.ctx.draw(0, self.model.1, self.voxels.len() as i32);
 
