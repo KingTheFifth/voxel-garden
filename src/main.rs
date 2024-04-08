@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use glam::{I64Vec3, Mat3, Mat4, Vec3};
+use glam::{I64Vec3, Mat3, Mat4, Vec3, Vec4};
 use miniquad::{
     conf, date, window, Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, Comparison,
     CullFace, EventHandler, PassAction, Pipeline, PipelineParams, RenderingBackend, ShaderSource,
@@ -34,6 +34,12 @@ struct App {
     mouse_prevpos: (f32, f32),
 
     trackball_matrix: Mat4,
+}
+
+#[repr(C)]
+struct InstanceData {
+    position: Vec3,
+    color: Vec4,
 }
 
 impl App {
@@ -111,6 +117,7 @@ impl App {
             &[
                 VertexAttribute::with_buffer("in_position", VertexFormat::Float3, 0),
                 VertexAttribute::with_buffer("in_inst_position", VertexFormat::Float3, 1), // TODO: VertexFormat::Int32?
+                VertexAttribute::with_buffer("in_inst_color", VertexFormat::Float4, 1),
             ],
             shader,
             PipelineParams {
@@ -202,7 +209,16 @@ impl EventHandler for App {
             }));
         self.ctx.buffer_update(
             self.model.0.vertex_buffers[1],
-            BufferSource::slice(&[Vec3::new(0.0, 0.0, 0.0), Vec3::new(0.0, 1.0, 1.0)]),
+            BufferSource::slice(&[
+                InstanceData {
+                    position: Vec3::new(0.0, 1.0, 1.0),
+                    color: Vec4::new(1.0, 1.0, 1.0, 1.0),
+                },
+                InstanceData {
+                    position: Vec3::new(0.0, 0.0, 0.0),
+                    color: Vec4::new(0.0, 1.0, 1.0, 1.0),
+                },
+            ]),
         );
         self.ctx.draw(0, self.model.1, 2);
 
