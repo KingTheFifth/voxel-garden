@@ -161,13 +161,8 @@ impl App {
     }
 
     fn camera_matrix(&mut self) -> Mat4 {
-        let t = 0.0;
         Mat4::look_at_rh(
-            Vec3::new(
-                2.0 * (t * self.rotation_speed).sin() as f32,
-                ((t * self.rotation_speed) / 2.0).sin() as f32,
-                2.0 * (t * self.rotation_speed).cos() as f32,
-            ),
+            Vec3::new(0.0, 0.0, 5.0),
             Vec3::ZERO,
             Vec3::Y,
         )

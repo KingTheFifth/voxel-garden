@@ -19,8 +19,12 @@ pub fn arb_rotate(axis: Vec3, angle: f32) -> Mat4 {
     let y = z.cross(x).normalize();
     let z = x.cross(y);
 
+    #[rustfmt::skip]
     let rot_mat = Mat4::from_cols_array(&[
-        x.x, x.y, x.z, 0.0, y.x, y.y, y.z, 0.0, z.x, z.y, z.z, 0.0, 0.0, 0.0, 0.0, 1.0,
+        x.x, x.y, x.z, 0.0,
+        y.x, y.y, y.z, 0.0,
+        z.x, z.y, z.z, 0.0,
+        0.0, 0.0, 0.0, 1.0,
     ]);
     let rot_mat_t = rot_mat.transpose();
     let rot_x_mat = Mat4::from_rotation_x(angle);
