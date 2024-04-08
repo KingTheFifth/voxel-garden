@@ -6,6 +6,7 @@ use miniquad::{
     CullFace, EventHandler, PassAction, Pipeline, PipelineParams, RenderingBackend, ShaderSource,
     UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
+use models::primitives;
 
 mod models;
 
@@ -24,6 +25,7 @@ struct App {
     rotation_speed: f64,
 
     flowers: Vec<Model>,
+    voxels: Vec<Voxel>,
     model: (Bindings, i32),
     // Beware of the pipeline
 }
@@ -89,7 +91,7 @@ impl App {
         let positions_vertex_buffer = ctx.new_buffer(
             BufferType::VertexBuffer,
             BufferUsage::Stream, // TODO: dynamic?
-            BufferSource::empty::<Vec3>(MAX_VOXELS),
+            BufferSource::empty::<InstanceData>(MAX_VOXELS),
         );
 
         let bindings = Bindings {
@@ -119,6 +121,8 @@ impl App {
                 ..Default::default()
             },
         );
+        let voxels = primitives::line_cross(Voxel::ZERO, Voxel::new(10, 5, 3));
+        dbg!(&voxels);
 
         Self {
             #[cfg(feature = "egui")]
@@ -129,6 +133,7 @@ impl App {
             rotation_speed: 1.0,
             model: (bindings, indices.len() as i32),
             flowers: Vec::new(),
+            voxels,
         }
     }
 
@@ -187,18 +192,17 @@ impl EventHandler for App {
             }));
         self.ctx.buffer_update(
             self.model.0.vertex_buffers[1],
-            BufferSource::slice(&[
-                InstanceData {
-                    position: Vec3::new(0.0, 1.0, 1.0),
+            BufferSource::slice(&[self
+                .voxels
+                .iter()
+                .copied()
+                .map(|Voxel { x, y, z }| InstanceData {
+                    position: Vec3::new(x as f32, y as f32, z as f32),
                     color: Vec4::new(1.0, 1.0, 1.0, 1.0),
-                },
-                InstanceData {
-                    position: Vec3::new(0.0, 0.0, 0.0),
-                    color: Vec4::new(0.0, 1.0, 1.0, 1.0),
-                },
-            ]),
+                })
+                .collect::<Vec<_>>()]),
         );
-        self.ctx.draw(0, self.model.1, 2);
+        self.ctx.draw(0, self.model.1, self.voxels.len() as i32);
 
         self.ctx.end_render_pass();
 
