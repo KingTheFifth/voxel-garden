@@ -1,4 +1,5 @@
-use std::{collections::VecDeque, f32::consts::PI, time::Instant};
+use std::f32::consts::PI;
+use std::time::Instant;
 
 use glam::{I64Vec3, Mat3, Mat4, Vec3, Vec4};
 use miniquad::{
