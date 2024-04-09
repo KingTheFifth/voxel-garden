@@ -7,6 +7,7 @@ use miniquad::{
     CullFace, EventHandler, PassAction, Pipeline, PipelineParams, RenderingBackend, ShaderSource,
     UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
+use models::primitives;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use utils::arb_rotate;
 
@@ -29,6 +30,7 @@ struct App {
     rotation_speed: f64,
 
     flowers: Vec<Model>,
+    voxels: Vec<Voxel>,
     model: (Bindings, i32),
     // Beware of the pipeline
     mouse_left_down: bool,
@@ -100,7 +102,7 @@ impl App {
         let positions_vertex_buffer = ctx.new_buffer(
             BufferType::VertexBuffer,
             BufferUsage::Stream, // TODO: dynamic?
-            BufferSource::empty::<Vec3>(MAX_VOXELS),
+            BufferSource::empty::<InstanceData>(MAX_VOXELS),
         );
 
         let bindings = Bindings {
@@ -130,6 +132,7 @@ impl App {
                 ..Default::default()
             },
         );
+        let voxels = primitives::bresenham(Voxel::ZERO, Voxel::new(10, 5, 3));
 
         Self {
             #[cfg(feature = "egui")]
@@ -141,6 +144,7 @@ impl App {
             rotation_speed: 1.0,
             model: (bindings, indices.len() as i32),
             flowers: Vec::new(),
+            voxels,
             mouse_left_down: false,
             mouse_right_down: false,
             mouse_downpos: (0.0, 0.0),
@@ -177,7 +181,11 @@ impl App {
     }
 
     fn camera_matrix(&mut self) -> Mat4 {
-        Mat4::look_at_rh(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, Vec3::Y)
+        Mat4::look_at_rh(
+            10.0 * Vec3::new(0.0, 0.0, 5.0),
+            10.0 * Vec3::ZERO,
+            10.0 * Vec3::Y,
+        )
     }
 
     fn trackball_control(&mut self, screen_pos: (f32, f32)) {
@@ -206,7 +214,7 @@ impl EventHandler for App {
         // Beware the pipeline
         self.ctx.apply_pipeline(&self.pipeline);
 
-        let proj_matrix = Mat4::perspective_rh_gl(PI / 2.0, 1.0, 0.1, 10.0);
+        let proj_matrix = Mat4::perspective_rh_gl(PI / 2.0, 1.0, 0.1, 1000.0);
         let camera = self.camera_matrix() * self.trackball_matrix;
         self.ctx.apply_bindings(&self.model.0);
         self.ctx
@@ -216,18 +224,19 @@ impl EventHandler for App {
             }));
         self.ctx.buffer_update(
             self.model.0.vertex_buffers[1],
-            BufferSource::slice(&[
-                InstanceData {
-                    position: Vec3::new(0.0, 1.0, 1.0),
-                    color: Vec4::new(1.0, 1.0, 1.0, 1.0),
-                },
-                InstanceData {
-                    position: Vec3::new(0.0, 0.0, 0.0),
-                    color: Vec4::new(0.0, 1.0, 1.0, 1.0),
-                },
-            ]),
+            BufferSource::slice(
+                &self
+                    .voxels
+                    .iter()
+                    .copied()
+                    .map(|Voxel { x, y, z }| InstanceData {
+                        position: Vec3::new(x as f32, y as f32, z as f32),
+                        color: Vec4::new(1.0, 1.0, 1.0, 1.0),
+                    })
+                    .collect::<Vec<_>>(),
+            ),
         );
-        self.ctx.draw(0, self.model.1, 2);
+        self.ctx.draw(0, self.model.1, self.voxels.len() as i32);
 
         self.ctx.end_render_pass();
 
