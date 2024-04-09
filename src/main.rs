@@ -1,4 +1,5 @@
 use std::f32::consts::PI;
+use std::time::Instant;
 
 use glam::{I64Vec3, Mat3, Mat4, Vec3, Vec4};
 use miniquad::{
@@ -7,6 +8,7 @@ use miniquad::{
     UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
 use models::primitives;
+use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use utils::arb_rotate;
 
 mod models;
@@ -24,6 +26,7 @@ struct App {
     pipeline: Pipeline,
     prev_t: f64,
 
+    frame_times: AllocRingBuffer<f32>,
     rotation_speed: f64,
 
     flowers: Vec<Model>,
@@ -137,6 +140,7 @@ impl App {
             ctx,
             pipeline,
             prev_t: 0.0,
+            frame_times: AllocRingBuffer::new(10),
             rotation_speed: 1.0,
             model: (bindings, indices.len() as i32),
             flowers: Vec::new(),
@@ -165,6 +169,11 @@ impl App {
                 ui.add(
                     egui::Slider::new(&mut self.rotation_speed, (0.1)..=10.0).clamp_to_range(true),
                 );
+
+                ui.label(format!(
+                    "Average frame time: {:.2} ms",
+                    self.frame_times.iter().sum::<f32>() / self.frame_times.len() as f32
+                ));
             });
         });
 
@@ -194,6 +203,8 @@ impl EventHandler for App {
     fn update(&mut self) {}
 
     fn draw(&mut self) {
+        let draw_start = Instant::now();
+
         let t = date::now();
         let delta = (t - self.prev_t) as f32;
         self.prev_t = t;
@@ -233,6 +244,10 @@ impl EventHandler for App {
         self.egui_ui();
 
         self.ctx.commit_frame();
+
+        let draw_end = Instant::now();
+        self.frame_times
+            .push(draw_end.duration_since(draw_start).as_secs_f32() * 1000.0)
     }
 
     fn mouse_motion_event(&mut self, x: f32, y: f32) {
