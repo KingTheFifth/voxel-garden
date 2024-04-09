@@ -17,10 +17,16 @@ type Model = Vec<Voxel>;
 
 const MAX_VOXELS: usize = 1000;
 
+#[cfg(feature = "egui")]
+struct EguiContext {
+    mq: egui_miniquad::EguiMq,
+    show_performance_window: bool,
+}
+
 struct App {
     ctx: Box<dyn RenderingBackend>,
     #[cfg(feature = "egui")]
-    egui_mq: egui_miniquad::EguiMq,
+    egui_ctx: EguiContext,
     pipeline: Pipeline,
     prev_t: f64,
 
@@ -133,7 +139,10 @@ impl App {
 
         Self {
             #[cfg(feature = "egui")]
-            egui_mq: egui_miniquad::EguiMq::new(&mut *ctx),
+            egui_ctx: EguiContext {
+                mq: egui_miniquad::EguiMq::new(&mut *ctx),
+                show_performance_window: true,
+            },
             ctx,
             pipeline,
             prev_t: 0.0,
@@ -151,14 +160,22 @@ impl App {
 
     #[cfg(feature = "egui")]
     fn egui_ui(&mut self) {
-        self.egui_mq.run(&mut *self.ctx, |_ctx, egui_ctx| {
+        self.egui_ctx.mq.run(&mut *self.ctx, |_ctx, egui_ctx| {
             profile_scope!("egui_miniquad run");
             egui::TopBottomPanel::top("top bar").show(egui_ctx, |ui| {
-                ui.menu_button("File", |ui| {
-                    if ui.button("Quit").clicked() {
-                        unimplemented!("this is ironic");
-                    }
-                });
+                ui.horizontal(|ui| {
+                    ui.menu_button("File", |ui| {
+                        if ui.button("Quit").clicked() {
+                            unimplemented!("this is ironic");
+                        }
+                    });
+                    ui.menu_button("View", |ui| {
+                        ui.checkbox(
+                            &mut self.egui_ctx.show_performance_window,
+                            "Performance window",
+                        );
+                    })
+                })
             });
 
             egui::Window::new("Debug").show(egui_ctx, |ui| {
@@ -168,11 +185,15 @@ impl App {
                 );
             });
 
-            puffin_egui::profiler_window(egui_ctx);
+            if self.egui_ctx.show_performance_window {
+                egui::Window::new("Profiler")
+                    .collapsible(false)
+                    .show(egui_ctx, puffin_egui::profiler_ui);
+            }
         });
 
         profile_scope!("egui_miniquad draw");
-        self.egui_mq.draw(&mut *self.ctx);
+        self.egui_ctx.mq.draw(&mut *self.ctx);
     }
 
     fn camera_matrix(&mut self) -> Mat4 {
@@ -246,7 +267,7 @@ impl EventHandler for App {
 
     fn mouse_motion_event(&mut self, x: f32, y: f32) {
         #[cfg(feature = "egui")]
-        self.egui_mq.mouse_motion_event(x, y);
+        self.egui_ctx.mq.mouse_motion_event(x, y);
 
         if self.mouse_left_down {
             self.trackball_control((x, y));
@@ -257,12 +278,12 @@ impl EventHandler for App {
 
     fn mouse_wheel_event(&mut self, dx: f32, dy: f32) {
         #[cfg(feature = "egui")]
-        self.egui_mq.mouse_wheel_event(dx, dy);
+        self.egui_ctx.mq.mouse_wheel_event(dx, dy);
     }
 
     fn mouse_button_down_event(&mut self, mb: miniquad::MouseButton, x: f32, y: f32) {
         #[cfg(feature = "egui")]
-        self.egui_mq.mouse_button_down_event(mb, x, y);
+        self.egui_ctx.mq.mouse_button_down_event(mb, x, y);
 
         self.mouse_downpos = (x, y);
         self.mouse_prevpos = (x, y);
@@ -275,7 +296,7 @@ impl EventHandler for App {
 
     fn mouse_button_up_event(&mut self, mb: miniquad::MouseButton, x: f32, y: f32) {
         #[cfg(feature = "egui")]
-        self.egui_mq.mouse_button_up_event(mb, x, y);
+        self.egui_ctx.mq.mouse_button_up_event(mb, x, y);
 
         match mb {
             miniquad::MouseButton::Left => self.mouse_left_down = false,
@@ -286,7 +307,7 @@ impl EventHandler for App {
 
     fn char_event(&mut self, character: char, _keymods: miniquad::KeyMods, _repeat: bool) {
         #[cfg(feature = "egui")]
-        self.egui_mq.char_event(character);
+        self.egui_ctx.mq.char_event(character);
     }
 
     fn key_down_event(
@@ -296,12 +317,12 @@ impl EventHandler for App {
         _repeat: bool,
     ) {
         #[cfg(feature = "egui")]
-        self.egui_mq.key_down_event(keycode, keymods);
+        self.egui_ctx.mq.key_down_event(keycode, keymods);
     }
 
     fn key_up_event(&mut self, keycode: miniquad::KeyCode, keymods: miniquad::KeyMods) {
         #[cfg(feature = "egui")]
-        self.egui_mq.key_up_event(keycode, keymods);
+        self.egui_ctx.mq.key_up_event(keycode, keymods);
     }
 }
 
