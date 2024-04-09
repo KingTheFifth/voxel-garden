@@ -152,6 +152,7 @@ impl App {
     #[cfg(feature = "egui")]
     fn egui_ui(&mut self) {
         self.egui_mq.run(&mut *self.ctx, |_ctx, egui_ctx| {
+            profile_scope!("egui_miniquad run");
             egui::TopBottomPanel::top("top bar").show(egui_ctx, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("Quit").clicked() {
@@ -166,8 +167,11 @@ impl App {
                     egui::Slider::new(&mut self.rotation_speed, (0.1)..=10.0).clamp_to_range(true),
                 );
             });
+
+            puffin_egui::profiler_window(egui_ctx);
         });
 
+        profile_scope!("egui_miniquad draw");
         self.egui_mq.draw(&mut *self.ctx);
     }
 
@@ -194,6 +198,11 @@ impl EventHandler for App {
     fn update(&mut self) {}
 
     fn draw(&mut self) {
+        profile_function!();
+
+        #[cfg(feature = "egui")]
+        puffin::GlobalProfiler::lock().new_frame();
+
         let t = date::now();
         let delta = (t - self.prev_t) as f32;
         self.prev_t = t;
@@ -211,20 +220,19 @@ impl EventHandler for App {
                 proj_matrix,
                 model_matrix: camera,
             }));
-        self.ctx.buffer_update(
-            self.model.0.vertex_buffers[1],
-            BufferSource::slice(
-                &self
-                    .voxels
-                    .iter()
-                    .copied()
-                    .map(|Voxel { x, y, z }| InstanceData {
-                        position: Vec3::new(x as f32, y as f32, z as f32),
-                        color: Vec4::new(1.0, 1.0, 1.0, 1.0),
-                    })
-                    .collect::<Vec<_>>(),
-            ),
-        );
+        let voxels: Vec<_> = {
+            profile_scope!("create instance data");
+            self.voxels
+                .iter()
+                .copied()
+                .map(|Voxel { x, y, z }| InstanceData {
+                    position: Vec3::new(x as f32, y as f32, z as f32),
+                    color: Vec4::new(1.0, 1.0, 1.0, 1.0),
+                })
+                .collect()
+        };
+        self.ctx
+            .buffer_update(self.model.0.vertex_buffers[1], BufferSource::slice(&voxels));
         self.ctx.draw(0, self.model.1, self.voxels.len() as i32);
 
         self.ctx.end_render_pass();
@@ -232,6 +240,7 @@ impl EventHandler for App {
         #[cfg(feature = "egui")]
         self.egui_ui();
 
+        profile_scope!("commit frame");
         self.ctx.commit_frame();
     }
 
@@ -297,6 +306,9 @@ impl EventHandler for App {
 }
 
 fn main() {
+    #[cfg(feature = "egui")]
+    puffin::set_scopes_on(true);
+
     let conf = conf::Conf {
         window_title: "voxel garden".to_string(),
         window_width: 800,

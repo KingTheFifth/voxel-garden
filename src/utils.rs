@@ -1,7 +1,22 @@
 use std::f32::EPSILON;
 
-use egui::Vec2;
 use glam::{Mat4, Vec3};
+
+#[macro_export]
+macro_rules! profile_function {
+    ($($expr:expr)?) => {
+        #[cfg(feature = "egui")]
+        puffin::profile_function!($($expr)?);
+    };
+}
+
+#[macro_export]
+macro_rules! profile_scope {
+    ($name:literal $(, $expr:expr)?) => {
+        #[cfg(feature = "egui")]
+        puffin::profile_scope!($name $(, $expr)?);
+    };
+}
 
 pub fn arb_rotate(axis: Vec3, angle: f32) -> Mat4 {
     // Check if parrallel to Z
