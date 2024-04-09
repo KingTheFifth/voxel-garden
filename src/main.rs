@@ -6,10 +6,7 @@ use miniquad::{
     CullFace, EventHandler, PassAction, Pipeline, PipelineParams, RenderingBackend, ShaderSource,
     UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
-use models::{
-    flower::{flower, Flower},
-    primitives::line,
-};
+use models::{flower::flower, primitives::line};
 
 mod models;
 mod util;
@@ -27,7 +24,7 @@ struct App {
 
     rotation_speed: f64,
 
-    flowers: Vec<Flower>,
+    flowers: Vec<Vec<(Voxel, Vec4)>>,
     other_voxels: Vec<Voxel>,
     model: (Bindings, i32),
     // Beware of the pipeline
@@ -167,38 +164,38 @@ impl App {
     }
 
     fn get_voxel_instances(&self) -> Vec<InstanceData> {
-        self.flowers.iter().map(|_flower| todo!()).collect()
-        // InstanceData {
-        //     position: Vec3::new(0.0, 1.0, 1.0),
-        //     color: Vec4::new(1.0, 1.0, 1.0, 1.0),
-        // },
-        // InstanceData {
-        //     position: Vec3::new(0.0, 0.0, 0.0),
-        //     color: Vec4::new(0.0, 1.0, 1.0, 1.0),
-        // },
+        self.flowers
+            .iter()
+            .flatten()
+            .copied()
+            .map(|(Voxel { x, y, z }, color)| InstanceData {
+                position: Vec3::new(x as f32, y as f32, z as f32),
+                color,
+            })
+            .collect()
     }
 
-    fn get_debug_points(&self) -> Vec<InstanceData> {
-        let flowers = self
-            .flowers
-            .iter()
-            .flat_map(|flower| &flower.debug_points)
-            .map(|(pos, color)| InstanceData {
-                position: Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32),
-                color: *color,
-            });
-        let tot_other_voxels = self.other_voxels.len();
-        let other_voxels = self
-            .other_voxels
-            .iter()
-            .enumerate()
-            .map(|(i, pos)| InstanceData {
-                position: Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32),
-                color: Vec4::new((i as f32 / tot_other_voxels as f32), 0.8, 1.0, 1.0),
-            });
+    // fn get_debug_points(&self) -> Vec<InstanceData> {
+    //     let flowers = self
+    //         .flowers
+    //         .iter()
+    //         .flat_map(|flower| &flower.debug_points)
+    //         .map(|(pos, color)| InstanceData {
+    //             position: Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32),
+    //             color: *color,
+    //         });
+    //     let tot_other_voxels = self.other_voxels.len();
+    //     let other_voxels = self
+    //         .other_voxels
+    //         .iter()
+    //         .enumerate()
+    //         .map(|(i, pos)| InstanceData {
+    //             position: Vec3::new(pos.x as f32, pos.y as f32, pos.z as f32),
+    //             color: Vec4::new((i as f32 / tot_other_voxels as f32), 0.8, 1.0, 1.0),
+    //         });
 
-        flowers.chain(other_voxels).collect()
-    }
+    //     flowers.chain(other_voxels).collect()
+    // }
 }
 
 impl EventHandler for App {
@@ -231,7 +228,7 @@ impl EventHandler for App {
                 proj_matrix,
                 model_matrix: camera,
             }));
-        let voxels = self.get_debug_points();
+        let voxels = self.get_voxel_instances();
         self.ctx
             .buffer_update(self.model.0.vertex_buffers[1], BufferSource::slice(&voxels));
         self.ctx.draw(0, self.model.1, voxels.len() as i32);

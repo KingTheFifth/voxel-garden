@@ -1,4 +1,4 @@
-use glam::{I64Vec3, Vec3, Vec4};
+use glam::Vec4;
 
 use crate::{
     util::{voxel_to_vec, RED},
@@ -7,17 +7,18 @@ use crate::{
 
 type Color = Vec4;
 
-pub struct Flower {
-    pub voxels: Vec<Voxel>,
-    pub debug_points: Vec<(Vec3, Color)>,
-}
+pub fn flower(_seed: u64) -> Vec<(Voxel, Vec4)> {
+    let root = Voxel::new(0, 0, 0);
+    let _debug_points = vec![(voxel_to_vec(&root), RED)];
 
-pub fn flower(_seed: u64) -> Flower {
-    let root = I64Vec3::new(0, 0, 0);
-    let debug_points = vec![(voxel_to_vec(&root), RED)];
+    let brown = Vec4::new(1.0, 0.5, 0.0, 1.0);
 
-    Flower {
-        voxels: Vec::new(),
-        debug_points,
-    }
+    vec![
+        // stem
+        (Voxel::new(0, 0, 0), brown),
+        (Voxel::new(0, 1, 0), brown),
+        (Voxel::new(0, 2, 0), brown),
+        (Voxel::new(0, 3, 0), brown),
+        (Voxel::new(1, 4, 0), brown),
+    ]
 }
