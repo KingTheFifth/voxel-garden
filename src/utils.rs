@@ -1,7 +1,18 @@
+#![allow(unused)]
+
 use std::f32::EPSILON;
 
-use egui::Vec2;
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Vec3, Vec4};
+
+use crate::{Point, Voxel};
+
+pub const RED: Vec4 = Vec4::new(1.0, 0.0, 0.0, 1.0);
+pub const GREEN: Vec4 = Vec4::new(0.0, 1.0, 0.0, 1.0);
+pub const BLUE: Vec4 = Vec4::new(0.0, 0.0, 1.0, 1.0);
+pub const WHITE: Vec4 = Vec4::new(1.0, 1.0, 1.0, 1.0);
+pub const BLACK: Vec4 = Vec4::new(0.0, 0.0, 0.0, 1.0);
+pub const ORANGE: Vec4 = Vec4::new(1.0, 0.5, 0.0, 1.0);
+pub const BROWN: Vec4 = Vec4::new(0.5, 0.2, 0.0, 1.0);
 
 pub fn arb_rotate(axis: Vec3, angle: f32) -> Mat4 {
     // Check if parrallel to Z
@@ -29,4 +40,8 @@ pub fn arb_rotate(axis: Vec3, angle: f32) -> Mat4 {
     let rot_mat_t = rot_mat.transpose();
     let rot_x_mat = Mat4::from_rotation_x(angle);
     rot_mat_t * rot_x_mat * rot_mat
+}
+
+pub fn voxel_to_vec(iv: &Point) -> Vec3 {
+    Vec3::new(iv.x as f32, iv.y as f32, iv.z as f32)
 }
