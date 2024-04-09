@@ -1,16 +1,8 @@
 use glam::Vec4;
 
-use crate::{
-    util::{voxel_to_vec, RED},
-    Voxel,
-};
+use crate::{Color, Voxel};
 
-type Color = Vec4;
-
-pub fn flower(_seed: u64) -> Vec<(Voxel, Vec4)> {
-    let root = Voxel::new(0, 0, 0);
-    let _debug_points = vec![(voxel_to_vec(&root), RED)];
-
+pub fn flower(_seed: u64) -> Vec<(Voxel, Color)> {
     let brown = Vec4::new(1.0, 0.5, 0.0, 1.0);
 
     vec![

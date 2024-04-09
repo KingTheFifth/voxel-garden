@@ -410,6 +410,7 @@ dependencies = [
  "egui-miniquad",
  "glam",
  "miniquad",
+ "ringbuffer",
  "tobj",
 ]
 
@@ -446,6 +447,12 @@ checksum = "4722d768eff46b75989dd134e5c353f0d6296e5aaa3132e776cbdb56be7731aa"
 dependencies = [
  "bitflags",
 ]
+
+[[package]]
+name = "ringbuffer"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3df6368f71f205ff9c33c076d170dd56ebf68e8161c733c0caa07a7a5509ed53"
 
 [[package]]
 name = "sapp-jsutils"
