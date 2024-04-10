@@ -1,26 +1,27 @@
 use std::f32::consts::PI;
 
-use glam::{I64Vec3, Mat3, Mat4, Vec3, Vec4};
+use glam::{IVec3, Mat3, Mat4, Quat, Vec3, Vec4};
 use miniquad::{
     conf, date, window, Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, Comparison,
     CullFace, EventHandler, PassAction, Pipeline, PipelineParams, RenderingBackend, ShaderSource,
     UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
-use models::primitives;
+use models::flower::flower;
+use models::terrain::generate_terrain;
+use noise::Perlin;
 use utils::arb_rotate;
 
 mod models;
 mod utils;
 
-type Voxel = I64Vec3;
-type Model = Vec<Voxel>;
+pub type Point = IVec3;
+pub type Color = Vec4;
 
-const MAX_VOXELS: usize = 1000;
+const MAX_VOXELS: usize = 100000000;
 
 #[cfg(feature = "egui")]
 struct EguiContext {
     mq: egui_miniquad::EguiMq,
-    show_performance_window: bool,
 }
 
 struct App {
@@ -32,9 +33,9 @@ struct App {
 
     rotation_speed: f64,
 
+    ground: Vec<Voxel>,
     flowers: Vec<Model>,
-    voxels: Vec<Voxel>,
-    model: (Bindings, i32),
+    cube: (Bindings, i32),
     // Beware of the pipeline
     mouse_left_down: bool,
     mouse_right_down: bool,
@@ -42,6 +43,25 @@ struct App {
     mouse_prevpos: (f32, f32),
 
     trackball_matrix: Mat4,
+}
+
+#[derive(Clone, Copy)]
+struct Voxel {
+    position: Point,
+    color: Color,
+}
+
+impl Voxel {
+    fn new(position: Point, color: Vec4) -> Voxel {
+        Voxel { position, color }
+    }
+}
+
+#[derive(Clone)]
+struct Model {
+    points: Vec<Voxel>,
+    rotation: Quat,
+    translation: Vec3,
 }
 
 #[repr(C)]
@@ -135,21 +155,21 @@ impl App {
                 ..Default::default()
             },
         );
-        let voxels = primitives::bresenham(Voxel::ZERO, Voxel::new(10, 5, 3));
+        // let voxels = bresenham(Voxel::ZERO, Voxel::new(10, 5, 3));
 
+        let terrain_noise = Perlin::new(555);
         Self {
             #[cfg(feature = "egui")]
             egui_ctx: EguiContext {
                 mq: egui_miniquad::EguiMq::new(&mut *ctx),
-                show_performance_window: true,
             },
             ctx,
             pipeline,
             prev_t: 0.0,
             rotation_speed: 1.0,
-            model: (bindings, indices.len() as i32),
-            flowers: Vec::new(),
-            voxels,
+            ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, terrain_noise),
+            cube: (bindings, indices.len() as i32),
+            flowers: vec![flower(0)],
             mouse_left_down: false,
             mouse_right_down: false,
             mouse_downpos: (0.0, 0.0),
@@ -220,7 +240,7 @@ impl EventHandler for App {
         puffin::GlobalProfiler::lock().new_frame();
 
         let t = date::now();
-        let delta = (t - self.prev_t) as f32;
+        let _delta = (t - self.prev_t) as f32;
         self.prev_t = t;
 
         self.ctx
@@ -230,26 +250,67 @@ impl EventHandler for App {
 
         let proj_matrix = Mat4::perspective_rh_gl(PI / 2.0, 1.0, 0.1, 1000.0);
         let camera = self.camera_matrix() * self.trackball_matrix;
-        self.ctx.apply_bindings(&self.model.0);
+
+        self.ctx.apply_bindings(&self.cube.0);
+
+        // Here
+        self.ctx.buffer_update(
+            self.cube.0.vertex_buffers[1],
+            BufferSource::slice(
+                &self
+                    .ground
+                    .iter()
+                    .map(|voxel| InstanceData {
+                        position: Vec3::new(
+                            voxel.position.x as f32,
+                            voxel.position.y as f32,
+                            voxel.position.z as f32,
+                        ),
+                        color: Vec4::new(
+                            voxel.color.x,
+                            voxel.color.y,
+                            voxel.color.z,
+                            voxel.color.w,
+                        ),
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+        );
         self.ctx
             .apply_uniforms(UniformsSource::table(&shader::Uniforms {
                 proj_matrix,
                 model_matrix: camera,
             }));
-        let voxels: Vec<_> = {
-            profile_scope!("create instance data");
-            self.voxels
+        self.ctx.draw(0, self.cube.1, self.ground.len() as i32);
+
+        let models = self.flowers.iter();
+        for model in models {
+            let instance_data: Vec<_> = model
+                .points
                 .iter()
                 .copied()
-                .map(|Voxel { x, y, z }| InstanceData {
-                    position: Vec3::new(x as f32, y as f32, z as f32),
-                    color: Vec4::new(1.0, 1.0, 1.0, 1.0),
-                })
-                .collect()
-        };
-        self.ctx
-            .buffer_update(self.model.0.vertex_buffers[1], BufferSource::slice(&voxels));
-        self.ctx.draw(0, self.model.1, self.voxels.len() as i32);
+                .map(
+                    |Voxel {
+                         position: Point { x, y, z },
+                         color,
+                     }| InstanceData {
+                        position: Vec3::new(x as f32, y as f32, z as f32),
+                        color,
+                    },
+                )
+                .collect();
+            self.ctx.buffer_update(
+                self.cube.0.vertex_buffers[1],
+                BufferSource::slice(&instance_data),
+            );
+            self.ctx
+                .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                    proj_matrix,
+                    model_matrix: camera
+                        * Mat4::from_rotation_translation(model.rotation, model.translation),
+                }));
+            self.ctx.draw(0, self.cube.1, model.points.len() as i32);
+        }
 
         self.ctx.end_render_pass();
 

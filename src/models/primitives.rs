@@ -1,18 +1,20 @@
-use crate::Voxel;
+#![allow(unused)]
+
+use crate::Point;
 
 struct BresenhamPoints {
-    start: Voxel,
-    end: Voxel,
+    start: Point,
+    end: Point,
 
-    ey: i64,
-    ez: i64,
-    x: i64,
-    y: i64,
-    z: i64,
+    ey: i32,
+    ez: i32,
+    x: i32,
+    y: i32,
+    z: i32,
 }
 
 impl BresenhamPoints {
-    fn new(start: Voxel, end: Voxel) -> Self {
+    fn new(start: Point, end: Point) -> Self {
         let (x1, y1, z1) = (start.x, start.y, start.z);
         let (x2, y2, z2) = (end.x, end.y, end.z);
 
@@ -32,11 +34,11 @@ impl BresenhamPoints {
 }
 
 impl Iterator for BresenhamPoints {
-    type Item = Voxel;
+    type Item = Point;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.x <= self.end.x {
-            let vox = Voxel::new(self.x, self.y, self.z);
+            let vox = Point::new(self.x, self.y, self.z);
             self.x += 1;
             self.ey += 2 * (self.end.y - self.start.y);
             self.ez += 2 * (self.end.z - self.start.z);
@@ -56,22 +58,22 @@ impl Iterator for BresenhamPoints {
 }
 
 /// Bresenham's line drawing algorithm extended into 3D.
-pub fn bresenham(start: Voxel, end: Voxel) -> Vec<Voxel> {
+pub fn bresenham(start: Point, end: Point) -> Vec<Point> {
     BresenhamPoints::new(start, end).collect()
 }
 
 /// A line with 3x3x3-crosses at every point.
-pub fn line_cross(start: Voxel, end: Voxel) -> Vec<Voxel> {
+pub fn line_cross(start: Point, end: Point) -> Vec<Point> {
     BresenhamPoints::new(start, end)
-        .flat_map(|Voxel { x, y, z }| {
+        .flat_map(|Point { x, y, z }| {
             [
-                Voxel::new(x, y, z),
-                Voxel::new(x + 1, y, z),
-                Voxel::new(x - 1, y, z),
-                Voxel::new(x, y + 1, z),
-                Voxel::new(x, y - 1, z),
-                Voxel::new(x, y, z + 1),
-                Voxel::new(x, y, z - 1),
+                Point::new(x, y, z),
+                Point::new(x + 1, y, z),
+                Point::new(x - 1, y, z),
+                Point::new(x, y + 1, z),
+                Point::new(x, y - 1, z),
+                Point::new(x, y, z + 1),
+                Point::new(x, y, z - 1),
             ]
         })
         .collect()
