@@ -13,12 +13,10 @@ use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use utils::arb_rotate;
 
 mod models;
-use models::terrain::generate_flat_terrain;
 use models::terrain::generate_terrain;
 mod utils;
 
 const MAX_VOXELS: usize = 100000000;
-const MAX_HEIGHT: f64 = 40.;
 pub type Point = IVec3;
 pub type Color = Vec4;
 
@@ -32,9 +30,7 @@ struct App {
     frame_times: AllocRingBuffer<f32>,
     rotation_speed: f64,
 
-    terrain_noise: Perlin,
-
-    ground: Vec<Voxel>,
+    ground: Vec<InstanceData>,
     flowers: Vec<Model>,
     cube: (Bindings, i32),
     // Beware of the pipeline
@@ -46,7 +42,7 @@ struct App {
     trackball_matrix: Mat4,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct Voxel {
     position: Point,
     color: Color,
@@ -69,6 +65,12 @@ struct Model {
 struct InstanceData {
     position: Vec3,
     color: Vec4,
+}
+
+impl InstanceData {
+    fn new(position: Vec3, color: Vec4) -> InstanceData {
+        InstanceData { position, color }
+    }
 }
 
 impl App {
@@ -145,7 +147,7 @@ impl App {
             ],
             &[
                 VertexAttribute::with_buffer("in_position", VertexFormat::Float3, 0),
-                VertexAttribute::with_buffer("in_inst_position", VertexFormat::Float3, 1), // TODO: VertexFormat::Int32?
+                VertexAttribute::with_buffer("in_inst_position", VertexFormat::Float3, 1),
                 VertexAttribute::with_buffer("in_inst_color", VertexFormat::Float4, 1),
             ],
             shader,
@@ -167,7 +169,6 @@ impl App {
             prev_t: 0.0,
             frame_times: AllocRingBuffer::new(10),
             rotation_speed: 1.0,
-            terrain_noise,
             ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, terrain_noise),
             cube: (bindings, indices.len() as i32),
             flowers: vec![flower(0)],
@@ -251,27 +252,27 @@ impl EventHandler for App {
             }));
         self.ctx.apply_bindings(&self.cube.0);
 
-        // Here
+        // Draw ground
         self.ctx.buffer_update(
             self.cube.0.vertex_buffers[1],
             BufferSource::slice(
-                &self
-                    .ground
-                    .iter()
-                    .map(|voxel| InstanceData {
-                        position: Vec3::new(
-                            voxel.position.x as f32,
-                            voxel.position.y as f32,
-                            voxel.position.z as f32,
-                        ),
-                        color: Vec4::new(
-                            voxel.color.x,
-                            voxel.color.y,
-                            voxel.color.z,
-                            voxel.color.w,
-                        ),
-                    })
-                    .collect::<Vec<_>>(),
+                &self.ground, /*
+                              .iter()
+                              .map(|voxel| InstanceData {
+                                  position: Vec3::new(
+                                      voxel.position.x as f32,
+                                      voxel.position.y as f32,
+                                      voxel.position.z as f32,
+                                  ),
+                                  color: Vec4::new(
+                                      voxel.color.x,
+                                      voxel.color.y,
+                                      voxel.color.z,
+                                      voxel.color.w,
+                                  ),
+                              })
+                              .collect::<Vec<_>>(),
+                              */
             ),
         );
         self.ctx
