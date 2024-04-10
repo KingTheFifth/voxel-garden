@@ -1,5 +1,6 @@
 use noise::Perlin;
 use std::f32::consts::PI;
+use std::mem::size_of;
 use std::time::Instant;
 
 use glam::{IVec3, Mat3, Mat4, Quat, Vec3, Vec4};
@@ -13,14 +14,14 @@ use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use utils::arb_rotate;
 
 mod models;
-use models::terrain::generate_flat_terrain;
 use models::terrain::generate_terrain;
 mod utils;
 
-const MAX_VOXELS: usize = 100000000;
-const MAX_HEIGHT: f64 = 40.;
-pub type Point = IVec3;
-pub type Color = Vec4;
+type Point = IVec3;
+type Color = Vec4;
+type Object = Vec<Model>;
+
+const MAX_INSTANCE_DATA: usize = size_of::<InstanceData>() * 100000;
 
 struct App {
     ctx: Box<dyn RenderingBackend>,
@@ -32,10 +33,8 @@ struct App {
     frame_times: AllocRingBuffer<f32>,
     rotation_speed: f64,
 
-    terrain_noise: Perlin,
-
     ground: Vec<Voxel>,
-    flowers: Vec<Model>,
+    flowers: Vec<Object>,
     cube: (Bindings, i32),
     // Beware of the pipeline
     mouse_left_down: bool,
@@ -126,7 +125,7 @@ impl App {
         let positions_vertex_buffer = ctx.new_buffer(
             BufferType::VertexBuffer,
             BufferUsage::Stream, // TODO: dynamic?
-            BufferSource::empty::<InstanceData>(MAX_VOXELS),
+            BufferSource::empty::<InstanceData>(MAX_INSTANCE_DATA),
         );
 
         let bindings = Bindings {
@@ -158,7 +157,6 @@ impl App {
         );
         // let voxels = bresenham(Voxel::ZERO, Voxel::new(10, 5, 3));
 
-        let terrain_noise = Perlin::new(555);
         Self {
             #[cfg(feature = "egui")]
             egui_mq: egui_miniquad::EguiMq::new(&mut *ctx),
@@ -167,8 +165,7 @@ impl App {
             prev_t: 0.0,
             frame_times: AllocRingBuffer::new(10),
             rotation_speed: 1.0,
-            terrain_noise,
-            ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, terrain_noise),
+            ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, Perlin::new(555)),
             cube: (bindings, indices.len() as i32),
             flowers: vec![flower(0)],
             mouse_left_down: false,
@@ -207,10 +204,11 @@ impl App {
     }
 
     fn camera_matrix(&mut self) -> Mat4 {
+        let scale = 5.0;
         Mat4::look_at_rh(
-            10.0 * Vec3::new(0.0, 0.0, 5.0),
-            10.0 * Vec3::ZERO,
-            10.0 * Vec3::Y,
+            scale * Vec3::new(0.0, 0.0, 5.0),
+            scale * Vec3::ZERO,
+            Vec3::Y,
         )
     }
 
@@ -251,7 +249,7 @@ impl EventHandler for App {
             }));
         self.ctx.apply_bindings(&self.cube.0);
 
-        // Here
+        // Draw ground
         self.ctx.buffer_update(
             self.cube.0.vertex_buffers[1],
             BufferSource::slice(
@@ -281,8 +279,9 @@ impl EventHandler for App {
             }));
         self.ctx.draw(0, self.cube.1, self.ground.len() as i32);
 
-        let models = self.flowers.iter();
-        for model in models {
+        // Draw objects
+        let objects = self.flowers.iter();
+        for model in objects.flatten() {
             let instance_data: Vec<_> = model
                 .points
                 .iter()
