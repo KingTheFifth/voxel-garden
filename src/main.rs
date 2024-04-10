@@ -16,7 +16,7 @@ mod models;
 use models::terrain::generate_terrain;
 mod utils;
 
-const MAX_VOXELS: usize = 100000000;
+const MAX_VOXELS: usize = 10000000;
 pub type Point = IVec3;
 pub type Color = Vec4;
 
@@ -169,7 +169,7 @@ impl App {
             prev_t: 0.0,
             frame_times: AllocRingBuffer::new(10),
             rotation_speed: 1.0,
-            ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, terrain_noise),
+            ground: generate_terrain(-50, -50, 20, 20, 20, 0.013, 20.0, terrain_noise),
             cube: (bindings, indices.len() as i32),
             flowers: vec![flower(0)],
             mouse_left_down: false,
@@ -209,9 +209,9 @@ impl App {
 
     fn camera_matrix(&mut self) -> Mat4 {
         Mat4::look_at_rh(
-            10.0 * Vec3::new(0.0, 0.0, 5.0),
-            10.0 * Vec3::ZERO,
-            10.0 * Vec3::Y,
+            100.0 * Vec3::new(0.0, 0.0, 5.0),
+            100.0 * Vec3::ZERO,
+            100.0 * Vec3::Y,
         )
     }
 
