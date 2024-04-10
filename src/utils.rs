@@ -14,6 +14,20 @@ pub const BLACK: Vec4 = Vec4::new(0.0, 0.0, 0.0, 1.0);
 pub const ORANGE: Vec4 = Vec4::new(1.0, 0.5, 0.0, 1.0);
 pub const BROWN: Vec4 = Vec4::new(0.5, 0.2, 0.0, 1.0);
 
+/// Profile a function.
+///
+/// Put this at the top of a function. The name of the scope is
+/// taken from the current function. IDs can be passed as expressions.
+///
+/// ```
+/// fn a_function() {
+///   profile_function!();
+/// }
+///
+/// fn another_function(arg: u32) {
+///   profile_function!(arg);
+/// }
+/// ```
 #[macro_export]
 macro_rules! profile_function {
     ($($expr:expr)?) => {
@@ -22,12 +36,60 @@ macro_rules! profile_function {
     };
 }
 
+/// Profile from the current program point until the end of the current scope.
+///
+/// ```
+/// fn a_function() {
+///   // some work
+///   for a in 0..5 {
+///     profile_in_scope!("name of span");  // start of profile span
+///     // do something here
+///   }                                     // end of profile span
+/// }
+/// ```
 #[macro_export]
-macro_rules! profile_scope {
+macro_rules! profile_in_scope {
     ($name:literal $(, $expr:expr)?) => {
         #[cfg(feature = "egui")]
         puffin::profile_scope!($name $(, $expr)?);
     };
+}
+
+/// Profile an expression.
+///
+/// ```
+/// fn a_function() {
+///   // some work
+///   let abc = profile!("addition", {
+///     1 + 2
+///   });
+/// }
+/// ```
+#[macro_export]
+macro_rules! profile {
+    ($name:literal, $what:expr) => {{
+        profile_in_scope!($name);
+        $what
+    }};
+}
+
+/// Profile an expression, with an ID.
+///
+/// Same as [profile] but with an ID.
+///
+/// ```
+/// fn a_function() {
+///   // some work
+///   let abc = profile!("addition", 123, {
+///     1 + 2
+///   });
+/// }
+/// ```
+macro_rules! profile_id {
+    ($name:literal, $expr:expr, $what:tt) => {{
+        profile_in_scope!($name, $expr);
+        $what
+    }};
 }
 
 pub fn arb_rotate(axis: Vec3, angle: f32) -> Mat4 {

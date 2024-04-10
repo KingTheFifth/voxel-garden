@@ -181,7 +181,7 @@ impl App {
     #[cfg(feature = "egui")]
     fn egui_ui(&mut self) {
         self.egui_ctx.mq.run(&mut *self.ctx, |_ctx, egui_ctx| {
-            profile_scope!("egui_miniquad run");
+            profile_in_scope!("egui_miniquad run");
             let mut profile = puffin::are_scopes_on();
             egui::TopBottomPanel::top("top bar").show(egui_ctx, |ui| {
                 ui.horizontal(|ui| {
@@ -207,7 +207,7 @@ impl App {
             puffin_egui::show_viewport_if_enabled(egui_ctx);
         });
 
-        profile_scope!("egui_miniquad draw");
+        profile_in_scope!("egui_miniquad draw");
         self.egui_ctx.mq.draw(&mut *self.ctx);
     }
 
@@ -253,38 +253,41 @@ impl EventHandler for App {
 
         self.ctx.apply_bindings(&self.cube.0);
 
-        // Here
-        self.ctx.buffer_update(
-            self.cube.0.vertex_buffers[1],
-            BufferSource::slice(
-                &self
-                    .ground
-                    .iter()
-                    .map(|voxel| InstanceData {
-                        position: Vec3::new(
-                            voxel.position.x as f32,
-                            voxel.position.y as f32,
-                            voxel.position.z as f32,
-                        ),
-                        color: Vec4::new(
-                            voxel.color.x,
-                            voxel.color.y,
-                            voxel.color.z,
-                            voxel.color.w,
-                        ),
-                    })
-                    .collect::<Vec<_>>(),
-            ),
-        );
-        self.ctx
-            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                proj_matrix,
-                model_matrix: camera,
-            }));
-        self.ctx.draw(0, self.cube.1, self.ground.len() as i32);
+        // Draw ground
+        profile!("draw ground", {
+            self.ctx.buffer_update(
+                self.cube.0.vertex_buffers[1],
+                BufferSource::slice(
+                    &self
+                        .ground
+                        .iter()
+                        .map(|voxel| InstanceData {
+                            position: Vec3::new(
+                                voxel.position.x as f32,
+                                voxel.position.y as f32,
+                                voxel.position.z as f32,
+                            ),
+                            color: Vec4::new(
+                                voxel.color.x,
+                                voxel.color.y,
+                                voxel.color.z,
+                                voxel.color.w,
+                            ),
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+            );
+            self.ctx
+                .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                    proj_matrix,
+                    model_matrix: camera,
+                }));
+            self.ctx.draw(0, self.cube.1, self.ground.len() as i32);
+        });
 
         let models = self.flowers.iter();
         for model in models {
+            profile_in_scope!("draw model");
             let instance_data: Vec<_> = model
                 .points
                 .iter()
@@ -317,7 +320,7 @@ impl EventHandler for App {
         #[cfg(feature = "egui")]
         self.egui_ui();
 
-        profile_scope!("commit frame");
+        profile_in_scope!("commit frame");
         self.ctx.commit_frame();
     }
 
