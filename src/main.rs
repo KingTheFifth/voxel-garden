@@ -162,6 +162,7 @@ impl App {
     fn egui_ui(&mut self) {
         self.egui_ctx.mq.run(&mut *self.ctx, |_ctx, egui_ctx| {
             profile_scope!("egui_miniquad run");
+            let mut profile = puffin::are_scopes_on();
             egui::TopBottomPanel::top("top bar").show(egui_ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.menu_button("File", |ui| {
@@ -170,10 +171,7 @@ impl App {
                         }
                     });
                     ui.menu_button("View", |ui| {
-                        ui.checkbox(
-                            &mut self.egui_ctx.show_performance_window,
-                            "Performance window",
-                        );
+                        ui.checkbox(&mut profile, "Performance window");
                     })
                 })
             });
@@ -185,11 +183,8 @@ impl App {
                 );
             });
 
-            if self.egui_ctx.show_performance_window {
-                egui::Window::new("Profiler")
-                    .collapsible(false)
-                    .show(egui_ctx, puffin_egui::profiler_ui);
-            }
+            puffin::set_scopes_on(profile);
+            puffin_egui::show_viewport_if_enabled(egui_ctx);
         });
 
         profile_scope!("egui_miniquad draw");
@@ -328,7 +323,7 @@ impl EventHandler for App {
 
 fn main() {
     #[cfg(feature = "egui")]
-    puffin::set_scopes_on(true);
+    puffin::set_scopes_on(false);
 
     let conf = conf::Conf {
         window_title: "voxel garden".to_string(),

@@ -173,7 +173,7 @@ dependencies = [
 [[package]]
 name = "egui-miniquad"
 version = "0.14.0"
-source = "git+https://github.com/sornas/egui-miniquad?rev=043e6391069810e6f57a0f4feca35757ac74b5e4#043e6391069810e6f57a0f4feca35757ac74b5e4"
+source = "git+https://github.com/not-fl3/egui-miniquad?rev=5df57233a60f75faadfa14a3ad9d4cddde637605#5df57233a60f75faadfa14a3ad9d4cddde637605"
 dependencies = [
  "bytemuck",
  "copypasta",
