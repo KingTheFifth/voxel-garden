@@ -12,7 +12,7 @@ pub fn _generate_flat_terrain(pos_x: i32, pos_z: i32, width: i32, depth: i32) ->
             voxels.push(Voxel::new(position, color));
         }
     }
-    return voxels;
+    voxels
 }
 
 pub fn generate_terrain(
