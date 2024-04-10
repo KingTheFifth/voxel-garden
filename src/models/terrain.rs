@@ -13,7 +13,6 @@ pub fn generate_terrain(
     perlin: Perlin,
 ) -> Vec<InstanceData> {
     let mut instance_data = Vec::new();
-    println!("Called");
 
     for z in pos_z..depth {
         for y in 0..height {

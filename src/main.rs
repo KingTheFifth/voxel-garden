@@ -16,7 +16,7 @@ mod models;
 use models::terrain::generate_terrain;
 mod utils;
 
-const MAX_VOXELS: usize = 10000000;
+const MAX_VOXELS: usize = 100000000;
 pub type Point = IVec3;
 pub type Color = Vec4;
 
@@ -31,6 +31,7 @@ struct App {
     rotation_speed: f64,
 
     ground: Vec<InstanceData>,
+
     flowers: Vec<Model>,
     cube: (Bindings, i32),
     // Beware of the pipeline
@@ -154,7 +155,6 @@ impl App {
         );
         // let voxels = bresenham(Voxel::ZERO, Voxel::new(10, 5, 3));
 
-        let terrain_noise = Perlin::new(555);
         Self {
             #[cfg(feature = "egui")]
             egui_mq: egui_miniquad::EguiMq::new(&mut *ctx),
@@ -163,7 +163,7 @@ impl App {
             prev_t: 0.0,
             frame_times: AllocRingBuffer::new(10),
             rotation_speed: 1.0,
-            ground: generate_terrain(-50, -50, 20, 20, 20, 0.013, 20.0, terrain_noise),
+            ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, Perlin::new(555)),
             cube: (bindings, indices.len() as i32),
             flowers: vec![flower(0)],
             mouse_left_down: false,
