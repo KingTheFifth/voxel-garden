@@ -33,6 +33,8 @@ struct App {
     ground: Vec<Voxel>,
     flowers: Vec<Model>,
     cube: (Bindings, i32),
+    sun_direction: Vec3,
+    sun_color: Vec3,
     // Beware of the pipeline
     mouse_left_down: bool,
     mouse_right_down: bool,
@@ -92,6 +94,7 @@ impl App {
             Vec3::new(-d,  d,  d),
             Vec3::new( d,  d,  d),
         ];
+
         let geometry_vertex_buffer = ctx.new_buffer(
             BufferType::VertexBuffer,
             BufferUsage::Immutable,
@@ -113,11 +116,21 @@ impl App {
             5, 4, 1,   4, 0, 1,
 
         ];
+
+        let normals = vertices.map(|v| v.normalize());
+
+        let normals_buffer = ctx.new_buffer(
+            BufferType::VertexBuffer,
+            BufferUsage::Immutable,
+            BufferSource::slice(&normals),
+        );
+
         let index_buffer = ctx.new_buffer(
             BufferType::IndexBuffer,
             BufferUsage::Immutable,
             BufferSource::slice(&indices),
         );
+
 
         let positions_vertex_buffer = ctx.new_buffer(
             BufferType::VertexBuffer,
@@ -126,7 +139,7 @@ impl App {
         );
 
         let bindings = Bindings {
-            vertex_buffers: vec![geometry_vertex_buffer, positions_vertex_buffer],
+            vertex_buffers: vec![geometry_vertex_buffer, positions_vertex_buffer, normals_buffer],
             index_buffer,
             images: vec![],
         };
@@ -141,6 +154,7 @@ impl App {
             ],
             &[
                 VertexAttribute::with_buffer("in_position", VertexFormat::Float3, 0),
+                VertexAttribute::with_buffer("in_normal", VertexFormat::Float3, 0),
                 VertexAttribute::with_buffer("in_inst_position", VertexFormat::Float3, 1), // TODO: VertexFormat::Int32?
                 VertexAttribute::with_buffer("in_inst_color", VertexFormat::Float4, 1),
             ],
@@ -165,6 +179,8 @@ impl App {
             ground: generate_flat_terrain(0, 0, 50, 50),
             cube: (bindings, indices.len() as i32),
             flowers: vec![flower(0)],
+            sun_direction: Vec3::new(1.0, 1.0, 0.0),
+            sun_color: Vec3::new(0.99, 0.72, 0.075),
             mouse_left_down: false,
             mouse_right_down: false,
             mouse_downpos: (0.0, 0.0),
@@ -266,6 +282,10 @@ impl EventHandler for App {
             .apply_uniforms(UniformsSource::table(&shader::Uniforms {
                 proj_matrix,
                 model_matrix: camera,
+                camera_matrix: camera,
+                normal_matrix: camera,
+                sun_direction: self.sun_direction,
+                sun_color: self.sun_color,
             }));
         self.ctx.draw(0, self.cube.1, self.ground.len() as i32);
 
@@ -294,6 +314,10 @@ impl EventHandler for App {
                     proj_matrix,
                     model_matrix: camera
                         * Mat4::from_rotation_translation(model.rotation, model.translation),
+                    camera_matrix: camera,
+                    normal_matrix: Mat4::from_rotation_translation(model.rotation, model.translation),
+                    sun_direction: self.sun_direction,
+                    sun_color: self.sun_color,
                 }));
             self.ctx.draw(0, self.cube.1, model.points.len() as i32);
         }
@@ -383,6 +407,7 @@ fn main() {
 
 mod shader {
     use glam::Mat4;
+    use glam::Vec3;
     use miniquad::ShaderMeta;
     use miniquad::UniformBlockLayout;
     use miniquad::UniformDesc;
@@ -398,6 +423,10 @@ mod shader {
                 uniforms: vec![
                     UniformDesc::new("proj_matrix", UniformType::Mat4),
                     UniformDesc::new("model_matrix", UniformType::Mat4),
+                    UniformDesc::new("camera_matrix", UniformType::Mat4),
+                    UniformDesc::new("normal_matrix", UniformType::Mat4),
+                    UniformDesc::new("sun_direction", UniformType::Float3),
+                    UniformDesc::new("sun_color", UniformType::Float3),
                 ],
             },
         }
@@ -407,5 +436,9 @@ mod shader {
     pub struct Uniforms {
         pub proj_matrix: Mat4,
         pub model_matrix: Mat4,
+        pub camera_matrix: Mat4,
+        pub normal_matrix: Mat4,
+        pub sun_direction: Vec3,
+        pub sun_color: Vec3,
     }
 }
