@@ -1,4 +1,3 @@
-use noise::Perlin;
 use std::f32::consts::PI;
 use std::mem::size_of;
 use std::time::Instant;
@@ -10,18 +9,19 @@ use miniquad::{
     UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
 use models::flower::flower;
+use models::terrain::generate_terrain;
+use noise::Perlin;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use utils::arb_rotate;
 
 mod models;
-use models::terrain::generate_terrain;
 mod utils;
 
 type Point = IVec3;
 type Color = Vec4;
 type Object = Vec<Model>;
 
-const MAX_INSTANCE_DATA: usize = size_of::<InstanceData>() * 100000;
+const MAX_INSTANCE_DATA: usize = size_of::<InstanceData>() * 100_000;
 
 struct App {
     ctx: Box<dyn RenderingBackend>,
@@ -36,13 +36,18 @@ struct App {
     ground: Vec<Voxel>,
     flowers: Vec<Object>,
     cube: (Bindings, i32),
-    // Beware of the pipeline
     mouse_left_down: bool,
     mouse_right_down: bool,
-    mouse_downpos: (f32, f32),
-    mouse_prevpos: (f32, f32),
+    movement: Movement,
+}
 
-    trackball_matrix: Mat4,
+enum Movement {
+    Trackball {
+        down_pos: (f32, f32),
+        prev_pos: (f32, f32),
+        matrix: Mat4,
+    },
+    Flying,
 }
 
 #[derive(Clone, Copy)]
@@ -170,9 +175,11 @@ impl App {
             flowers: vec![flower(0)],
             mouse_left_down: false,
             mouse_right_down: false,
-            mouse_downpos: (0.0, 0.0),
-            mouse_prevpos: (0.0, 0.0),
-            trackball_matrix: Mat4::IDENTITY,
+            movement: Movement::Trackball {
+                down_pos: (0.0, 0.0),
+                prev_pos: (0.0, 0.0),
+                matrix: Mat4::IDENTITY,
+            },
         }
     }
 
@@ -211,16 +218,12 @@ impl App {
             Vec3::Y,
         )
     }
+}
 
-    fn trackball_control(&mut self, screen_pos: (f32, f32)) {
-        let axis = Vec3::new(
-            screen_pos.1 - self.mouse_prevpos.1,
-            self.mouse_prevpos.0 - screen_pos.0,
-            0.0,
-        );
-        let axis = Mat3::from_mat4(self.camera_matrix()).inverse() * axis;
-        self.trackball_matrix = arb_rotate(axis, axis.length() / 50.0) * self.trackball_matrix;
-    }
+fn trackball_control(camera_matrix: Mat4, screen_pos: (f32, f32), prev_pos: (f32, f32)) -> Mat4 {
+    let axis = Vec3::new(screen_pos.1 - prev_pos.1, prev_pos.0 - screen_pos.0, 0.0);
+    let axis = Mat3::from_mat4(camera_matrix).inverse() * axis;
+    arb_rotate(axis, axis.length() / 50.0)
 }
 
 impl EventHandler for App {
@@ -239,7 +242,14 @@ impl EventHandler for App {
         self.ctx.apply_pipeline(&self.pipeline);
 
         let proj_matrix = Mat4::perspective_rh_gl(PI / 2.0, 1.0, 0.1, 1000.0);
-        let camera = self.camera_matrix() * self.trackball_matrix;
+        let camera = match self.movement {
+            Movement::Trackball {
+                down_pos: _,
+                prev_pos: _,
+                matrix: trackball_matrix,
+            } => self.camera_matrix() * trackball_matrix,
+            Movement::Flying => self.camera_matrix(),
+        };
 
         self.ctx.apply_bindings(&self.cube.0);
         self.ctx
@@ -325,11 +335,20 @@ impl EventHandler for App {
         #[cfg(feature = "egui")]
         self.egui_mq.mouse_motion_event(x, y);
 
-        if self.mouse_left_down {
-            self.trackball_control((x, y));
+        let camera_matrix = self.camera_matrix();
+        match &mut self.movement {
+            Movement::Trackball {
+                down_pos: _,
+                prev_pos,
+                matrix,
+            } => {
+                if self.mouse_left_down {
+                    *matrix = trackball_control(camera_matrix, (x, y), *prev_pos) * *matrix;
+                }
+                *prev_pos = (x, y);
+            }
+            Movement::Flying => todo!(),
         }
-
-        self.mouse_prevpos = (x, y);
     }
 
     fn mouse_wheel_event(&mut self, dx: f32, dy: f32) {
@@ -341,8 +360,17 @@ impl EventHandler for App {
         #[cfg(feature = "egui")]
         self.egui_mq.mouse_button_down_event(mb, x, y);
 
-        self.mouse_downpos = (x, y);
-        self.mouse_prevpos = (x, y);
+        match &mut self.movement {
+            Movement::Trackball {
+                down_pos,
+                prev_pos,
+                matrix: _,
+            } => {
+                *down_pos = (x, y);
+                *prev_pos = (x, y);
+            }
+            Movement::Flying => todo!(),
+        }
         match mb {
             miniquad::MouseButton::Left => self.mouse_left_down = true,
             miniquad::MouseButton::Right => self.mouse_right_down = true,
