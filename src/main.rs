@@ -48,12 +48,6 @@ struct Voxel {
     color: Color,
 }
 
-impl Voxel {
-    fn new(position: Point, color: Vec4) -> Voxel {
-        Voxel { position, color }
-    }
-}
-
 #[derive(Clone)]
 struct Model {
     points: Vec<Voxel>,
