@@ -12,12 +12,13 @@ use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use utils::arb_rotate;
 
 mod models;
+use models::terrain::generate_flat_terrain;
 mod utils;
 
 pub type Point = IVec3;
 pub type Color = Vec4;
 
-const MAX_VOXELS: usize = 1000;
+const MAX_VOXELS: usize = 100000;
 
 struct App {
     ctx: Box<dyn RenderingBackend>,
@@ -29,6 +30,7 @@ struct App {
     frame_times: AllocRingBuffer<f32>,
     rotation_speed: f64,
 
+    ground: Vec<Voxel>,
     flowers: Vec<Model>,
     cube: (Bindings, i32),
     // Beware of the pipeline
@@ -44,6 +46,12 @@ struct App {
 struct Voxel {
     position: Point,
     color: Color,
+}
+
+impl Voxel {
+    fn new(position: IVec3, color: Vec4) -> Voxel {
+        Voxel { position, color }
+    }
 }
 
 #[derive(Clone)]
@@ -154,6 +162,7 @@ impl App {
             prev_t: 0.0,
             frame_times: AllocRingBuffer::new(10),
             rotation_speed: 1.0,
+            ground: generate_flat_terrain(0, 0, 50, 50),
             cube: (bindings, indices.len() as i32),
             flowers: vec![flower(0)],
             mouse_left_down: false,
@@ -228,6 +237,37 @@ impl EventHandler for App {
         let proj_matrix = Mat4::perspective_rh_gl(PI / 2.0, 1.0, 0.1, 1000.0);
         let camera = self.camera_matrix() * self.trackball_matrix;
         self.ctx.apply_bindings(&self.cube.0);
+
+        // Here
+
+        self.ctx.buffer_update(
+            self.cube.0.vertex_buffers[1],
+            BufferSource::slice(
+                &self
+                    .ground
+                    .iter()
+                    .map(|voxel| InstanceData {
+                        position: Vec3::new(
+                            voxel.position.x as f32,
+                            voxel.position.y as f32,
+                            voxel.position.z as f32,
+                        ),
+                        color: Vec4::new(
+                            voxel.color.x,
+                            voxel.color.y,
+                            voxel.color.z,
+                            voxel.color.w,
+                        ),
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+        );
+        self.ctx
+            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                proj_matrix,
+                model_matrix: camera,
+            }));
+        self.ctx.draw(0, self.cube.1, self.ground.len() as i32);
 
         let models = self.flowers.iter();
         for model in models {
