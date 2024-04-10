@@ -14,8 +14,9 @@ use utils::arb_rotate;
 mod models;
 mod utils;
 
-pub type Point = IVec3;
-pub type Color = Vec4;
+type Point = IVec3;
+type Color = Vec4;
+type Object = Vec<Model>;
 
 const MAX_VOXELS: usize = 1000;
 
@@ -29,7 +30,7 @@ struct App {
     frame_times: AllocRingBuffer<f32>,
     rotation_speed: f64,
 
-    flowers: Vec<Model>,
+    flowers: Vec<Object>,
     cube: (Bindings, i32),
     // Beware of the pipeline
     mouse_left_down: bool,
@@ -192,10 +193,11 @@ impl App {
     }
 
     fn camera_matrix(&mut self) -> Mat4 {
+        let scale = 5.0;
         Mat4::look_at_rh(
-            10.0 * Vec3::new(0.0, 0.0, 5.0),
-            10.0 * Vec3::ZERO,
-            10.0 * Vec3::Y,
+            scale * Vec3::new(0.0, 0.0, 5.0),
+            scale * Vec3::ZERO,
+            Vec3::Y,
         )
     }
 
@@ -229,8 +231,8 @@ impl EventHandler for App {
         let camera = self.camera_matrix() * self.trackball_matrix;
         self.ctx.apply_bindings(&self.cube.0);
 
-        let models = self.flowers.iter();
-        for model in models {
+        let objects = self.flowers.iter();
+        for model in objects.flatten() {
             let instance_data: Vec<_> = model
                 .points
                 .iter()
