@@ -1,3 +1,4 @@
+use noise::Perlin;
 use std::f32::consts::PI;
 use std::time::Instant;
 
@@ -13,12 +14,13 @@ use utils::arb_rotate;
 
 mod models;
 use models::terrain::generate_flat_terrain;
+use models::terrain::generate_terrain;
 mod utils;
 
+const MAX_VOXELS: usize = 100000000;
+const MAX_HEIGHT: f64 = 40.;
 pub type Point = IVec3;
 pub type Color = Vec4;
-
-const MAX_VOXELS: usize = 100000;
 
 struct App {
     ctx: Box<dyn RenderingBackend>,
@@ -29,6 +31,8 @@ struct App {
 
     frame_times: AllocRingBuffer<f32>,
     rotation_speed: f64,
+
+    terrain_noise: Perlin,
 
     ground: Vec<Voxel>,
     flowers: Vec<Model>,
@@ -49,7 +53,7 @@ struct Voxel {
 }
 
 impl Voxel {
-    fn new(position: IVec3, color: Vec4) -> Voxel {
+    fn new(position: Point, color: Vec4) -> Voxel {
         Voxel { position, color }
     }
 }
@@ -154,6 +158,7 @@ impl App {
         );
         // let voxels = bresenham(Voxel::ZERO, Voxel::new(10, 5, 3));
 
+        let terrain_noise = Perlin::new(555);
         Self {
             #[cfg(feature = "egui")]
             egui_mq: egui_miniquad::EguiMq::new(&mut *ctx),
@@ -162,7 +167,8 @@ impl App {
             prev_t: 0.0,
             frame_times: AllocRingBuffer::new(10),
             rotation_speed: 1.0,
-            ground: generate_flat_terrain(0, 0, 50, 50),
+            terrain_noise,
+            ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, terrain_noise),
             cube: (bindings, indices.len() as i32),
             flowers: vec![flower(0)],
             mouse_left_down: false,
@@ -236,10 +242,16 @@ impl EventHandler for App {
 
         let proj_matrix = Mat4::perspective_rh_gl(PI / 2.0, 1.0, 0.1, 1000.0);
         let camera = self.camera_matrix() * self.trackball_matrix;
+
+        self.ctx.apply_bindings(&self.cube.0);
+        self.ctx
+            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                proj_matrix,
+                model_matrix: camera,
+            }));
         self.ctx.apply_bindings(&self.cube.0);
 
         // Here
-
         self.ctx.buffer_update(
             self.cube.0.vertex_buffers[1],
             BufferSource::slice(
