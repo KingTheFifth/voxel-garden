@@ -64,6 +64,12 @@ struct Model {
 }
 
 #[repr(C)]
+struct VertexData {
+    position: Vec3,
+    normal: Vec3,
+}
+
+#[repr(C)]
 struct InstanceData {
     position: Vec3,
     color: Vec4,
@@ -85,14 +91,14 @@ impl App {
         let d = 0.5;
         #[rustfmt::skip]
         let vertices = [
-            Vec3::new(-d, -d, -d),
-            Vec3::new( d, -d, -d),
-            Vec3::new(-d,  d, -d),
-            Vec3::new( d,  d, -d),
-            Vec3::new(-d, -d,  d),
-            Vec3::new( d, -d,  d),
-            Vec3::new(-d,  d,  d),
-            Vec3::new( d,  d,  d),
+            VertexData { position: Vec3::new(-d, -d, -d), normal: Vec3::new( -d, -d, -d).normalize() },
+            VertexData { position: Vec3::new( d, -d, -d), normal: Vec3::new(  d, -d, -d).normalize() },
+            VertexData { position: Vec3::new(-d,  d, -d), normal: Vec3::new( -d,  d, -d).normalize() },
+            VertexData { position: Vec3::new( d,  d, -d), normal: Vec3::new(  d,  d, -d).normalize() },
+            VertexData { position: Vec3::new(-d, -d,  d), normal: Vec3::new( -d, -d,  d).normalize() },
+            VertexData { position: Vec3::new( d, -d,  d), normal: Vec3::new(  d, -d,  d).normalize() },
+            VertexData { position: Vec3::new(-d,  d,  d), normal: Vec3::new( -d,  d,  d).normalize() },
+            VertexData { position: Vec3::new( d,  d,  d), normal: Vec3::new(  d,  d,  d).normalize() },
         ];
 
         let geometry_vertex_buffer = ctx.new_buffer(
@@ -117,20 +123,11 @@ impl App {
 
         ];
 
-        let normals = vertices.map(|v| v.normalize());
-
-        let normals_buffer = ctx.new_buffer(
-            BufferType::VertexBuffer,
-            BufferUsage::Immutable,
-            BufferSource::slice(&normals),
-        );
-
         let index_buffer = ctx.new_buffer(
             BufferType::IndexBuffer,
             BufferUsage::Immutable,
             BufferSource::slice(&indices),
         );
-
 
         let positions_vertex_buffer = ctx.new_buffer(
             BufferType::VertexBuffer,
@@ -139,7 +136,7 @@ impl App {
         );
 
         let bindings = Bindings {
-            vertex_buffers: vec![geometry_vertex_buffer, positions_vertex_buffer, normals_buffer],
+            vertex_buffers: vec![geometry_vertex_buffer, positions_vertex_buffer],
             index_buffer,
             images: vec![],
         };
@@ -315,7 +312,10 @@ impl EventHandler for App {
                     model_matrix: camera
                         * Mat4::from_rotation_translation(model.rotation, model.translation),
                     camera_matrix: camera,
-                    normal_matrix: Mat4::from_rotation_translation(model.rotation, model.translation),
+                    normal_matrix: Mat4::from_rotation_translation(
+                        model.rotation,
+                        model.translation,
+                    ),
                     sun_direction: self.sun_direction,
                     sun_color: self.sun_color,
                 }));
