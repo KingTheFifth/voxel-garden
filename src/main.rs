@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use glam::{I64Vec3, Mat4, Vec3, Vec3Swizzles, Vec4};
+use glam::{I64Vec3, Mat4, Vec3, Vec4};
 use miniquad::{
     conf, date, window, Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, Comparison,
     CullFace, EventHandler, PassAction, Pipeline, PipelineParams, RenderingBackend, ShaderSource,
