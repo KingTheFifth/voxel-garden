@@ -1,4 +1,5 @@
 use std::f32::consts::PI;
+use std::mem::size_of;
 use std::time::Instant;
 
 use glam::{IVec3, Mat3, Mat4, Quat, Vec3, Vec4};
@@ -19,7 +20,7 @@ type Point = IVec3;
 type Color = Vec4;
 type Object = Vec<Model>;
 
-const MAX_VOXELS: usize = 100000;
+const MAX_INSTANCE_DATA: usize = size_of::<InstanceData>() * 1000;
 
 struct App {
     ctx: Box<dyn RenderingBackend>,
@@ -123,7 +124,7 @@ impl App {
         let positions_vertex_buffer = ctx.new_buffer(
             BufferType::VertexBuffer,
             BufferUsage::Stream, // TODO: dynamic?
-            BufferSource::empty::<InstanceData>(MAX_VOXELS),
+            BufferSource::empty::<InstanceData>(MAX_INSTANCE_DATA),
         );
 
         let bindings = Bindings {
