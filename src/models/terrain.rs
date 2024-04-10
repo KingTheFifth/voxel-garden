@@ -2,7 +2,7 @@ use crate::Voxel;
 use glam::{IVec3, Vec4};
 use noise::{NoiseFn, Perlin};
 
-pub fn generate_flat_terrain(pos_x: i32, pos_z: i32, width: i32, depth: i32) -> Vec<Voxel> {
+pub fn _generate_flat_terrain(pos_x: i32, pos_z: i32, width: i32, depth: i32) -> Vec<Voxel> {
     let mut voxels = Vec::new();
 
     for z in 0..depth {
