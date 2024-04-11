@@ -145,8 +145,6 @@ pub fn sphere(midpoint: Point, r: f32) -> Vec<Point> {
         .all(|d| orig.contains(&(*p + d)));
         !has_all_neighbours
     });
-    dbg!(orig.len());
-    dbg!(points.len());
 
     points
 }
