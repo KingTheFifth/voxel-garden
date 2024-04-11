@@ -91,14 +91,14 @@ impl App {
         let d = 0.5;
         #[rustfmt::skip]
         let vertices = [
-            VertexData { position: Vec3::new(-d, -d, -d), normal: Vec3::new( -d, -d, -d).normalize() },
-            VertexData { position: Vec3::new( d, -d, -d), normal: Vec3::new(  d, -d, -d).normalize() },
+            VertexData { position: Vec3::new(-d, -d, -d), normal: Vec3::new( -d, 0.0, 0.0).normalize() },
+            VertexData { position: Vec3::new( d, -d, -d), normal: Vec3::new(  0.0, 0.0, -d).normalize() },
             VertexData { position: Vec3::new(-d,  d, -d), normal: Vec3::new( -d,  d, -d).normalize() },
             VertexData { position: Vec3::new( d,  d, -d), normal: Vec3::new(  d,  d, -d).normalize() },
-            VertexData { position: Vec3::new(-d, -d,  d), normal: Vec3::new( -d, -d,  d).normalize() },
-            VertexData { position: Vec3::new( d, -d,  d), normal: Vec3::new(  d, -d,  d).normalize() },
-            VertexData { position: Vec3::new(-d,  d,  d), normal: Vec3::new( -d,  d,  d).normalize() },
-            VertexData { position: Vec3::new( d,  d,  d), normal: Vec3::new(  d,  d,  d).normalize() },
+            VertexData { position: Vec3::new(-d, -d,  d), normal: Vec3::new( 0.0, -d,  0.0).normalize() },
+            VertexData { position: Vec3::new( d, -d,  d), normal: Vec3::new(  d, 0.0,  0.0).normalize() },
+            VertexData { position: Vec3::new(-d,  d,  d), normal: Vec3::new( 0.0,  d,  0.0).normalize() },
+            VertexData { position: Vec3::new( d,  d,  d), normal: Vec3::new(  0.0,  0.0,  d).normalize() },
         ];
 
         let geometry_vertex_buffer = ctx.new_buffer(
@@ -109,17 +109,17 @@ impl App {
         #[rustfmt::skip]
         let indices = [
             // Back
-            0, 2, 1,   1, 2, 3,
+            0, 2, 1,   2, 3, 1,
             // Front
-            4, 5, 7,   4, 7, 6,
+            4, 5, 7,   6, 4, 7,
             // Right
-            1, 3, 5,   5, 3, 7,
+            1, 3, 5,   3, 7, 5,
             // Left
-            4, 6, 0,   0, 6, 2,
+            4, 6, 0,   6, 2, 0,
             // Top
-            7, 3, 6,   6, 3, 2,
+            7, 3, 6,   3, 2, 6,
             // Bottom
-            5, 4, 1,   4, 0, 1,
+            1, 5, 4,   0, 1, 4,
 
         ];
 
@@ -176,7 +176,7 @@ impl App {
             ground: generate_flat_terrain(0, 0, 50, 50),
             cube: (bindings, indices.len() as i32),
             flowers: vec![flower(0)],
-            sun_direction: Vec3::new(1.0, 1.0, 0.0),
+            sun_direction: Vec3::new(0.0, 1.0, 0.0),
             sun_color: Vec3::new(0.99, 0.72, 0.075),
             mouse_left_down: false,
             mouse_right_down: false,
@@ -280,7 +280,6 @@ impl EventHandler for App {
                 proj_matrix,
                 model_matrix: camera,
                 camera_matrix: camera,
-                normal_matrix: camera,
                 sun_direction: self.sun_direction,
                 sun_color: self.sun_color,
             }));
@@ -312,10 +311,6 @@ impl EventHandler for App {
                     model_matrix: camera
                         * Mat4::from_rotation_translation(model.rotation, model.translation),
                     camera_matrix: camera,
-                    normal_matrix: Mat4::from_rotation_translation(
-                        model.rotation,
-                        model.translation,
-                    ),
                     sun_direction: self.sun_direction,
                     sun_color: self.sun_color,
                 }));
@@ -424,7 +419,6 @@ mod shader {
                     UniformDesc::new("proj_matrix", UniformType::Mat4),
                     UniformDesc::new("model_matrix", UniformType::Mat4),
                     UniformDesc::new("camera_matrix", UniformType::Mat4),
-                    UniformDesc::new("normal_matrix", UniformType::Mat4),
                     UniformDesc::new("sun_direction", UniformType::Float3),
                     UniformDesc::new("sun_color", UniformType::Float3),
                 ],
@@ -437,7 +431,6 @@ mod shader {
         pub proj_matrix: Mat4,
         pub model_matrix: Mat4,
         pub camera_matrix: Mat4,
-        pub normal_matrix: Mat4,
         pub sun_direction: Vec3,
         pub sun_color: Vec3,
     }
