@@ -264,6 +264,7 @@ impl EventHandler for App {
         let now = date::now();
         let draw_delta = now - self.prev_draw;
         self.prev_draw = now;
+        self.fps_history.push(1.0 / draw_delta);
 
         self.ctx
             .begin_default_pass(PassAction::clear_color(0.1, 0.1, 0.1, 1.0));
@@ -330,8 +331,6 @@ impl EventHandler for App {
         self.egui_ui();
 
         self.ctx.commit_frame();
-
-        self.fps_history.push(1.0 / draw_delta);
     }
 
     fn mouse_motion_event(&mut self, x: f32, y: f32) {
