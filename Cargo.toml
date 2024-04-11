@@ -5,12 +5,12 @@ edition = "2021"
 
 [features]
 default = ["egui"]
-egui = ["dep:egui", "egui-miniquad"]
+egui = ["dep:egui", "egui-miniquad", "egui_plot"]
 
 [dependencies]
 egui = { version = "0.27", optional = true }
 egui-miniquad = { git = "https://github.com/not-fl3/egui-miniquad", rev = "5df57233a60f75faadfa14a3ad9d4cddde637605", optional = true }
-egui_plot = "0.27"
+egui_plot = { version = "0.27", optional = true }
 glam = { version = "0.27", features = ["glam-assert", "scalar-math"] }
 miniquad = "0.4.0"
 noise = "0.9.0"
