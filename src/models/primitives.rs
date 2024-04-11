@@ -78,3 +78,75 @@ pub fn line_cross(start: Point, end: Point) -> Vec<Point> {
         })
         .collect()
 }
+
+pub fn circle(midpoint: Point, r: f32) -> Vec<Point> {
+    let mut points = vec![];
+    let Point {
+        x: px,
+        y: py,
+        z: pz,
+    } = midpoint;
+    let bound = r.ceil() as i32;
+    for xi in -bound..=bound {
+        let x = xi as f32;
+        for zi in -bound..=bound {
+            let z = zi as f32;
+            if x.powi(2) + z.powi(2) < r.powi(2) {
+                points.push(Point {
+                    x: px + xi,
+                    y: py,
+                    z: pz + zi,
+                });
+            }
+        }
+    }
+
+    points
+}
+
+pub fn sphere(midpoint: Point, r: f32) -> Vec<Point> {
+    let mut points = vec![];
+    let Point {
+        x: px,
+        y: py,
+        z: pz,
+    } = midpoint;
+    let bound = r.ceil() as i32;
+    for xi in -bound..=bound {
+        let x = xi as f32;
+        for yi in -bound..=bound {
+            let y = yi as f32;
+            for zi in -bound..=bound {
+                let z = zi as f32;
+                if x.powi(2) + y.powi(2) + z.powi(2) < r.powi(2) {
+                    points.push(Point {
+                        x: px + xi,
+                        y: py + yi,
+                        z: pz + zi,
+                    });
+                }
+            }
+        }
+    }
+
+    // remove voxels fully neighboured
+    let orig = points.clone();
+    points.retain(|p| {
+        let has_all_neighbours = [
+            Point::new(1, 0, 0),
+            Point::new(-1, 0, 0),
+            Point::new(0, 1, 0),
+            Point::new(0, -1, 0),
+            Point::new(0, 0, 0),
+            Point::new(0, 0, 1),
+            Point::new(0, 0, -1),
+        ]
+        .into_iter()
+        .all(|d| orig.contains(&(*p + d)));
+        !has_all_neighbours
+    });
+    dbg!(orig.len());
+    dbg!(points.len());
+
+    points
+}

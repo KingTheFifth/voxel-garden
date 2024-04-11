@@ -7,11 +7,12 @@ use miniquad::{
     CullFace, EventHandler, PassAction, Pipeline, PipelineParams, RenderingBackend, ShaderSource,
     UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
-use models::flower::flower;
+use models::primitives::sphere;
 use models::terrain::generate_terrain;
+use models::tree::tree;
 use noise::Perlin;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
-use utils::arb_rotate;
+use utils::{arb_rotate, WHITE};
 
 mod models;
 mod utils;
@@ -20,7 +21,7 @@ type Point = IVec3;
 type Color = Vec4;
 type Object = Vec<Model>;
 
-const MAX_INSTANCE_DATA: usize = size_of::<InstanceData>() * 100000;
+const MAX_INSTANCE_DATA: usize = size_of::<InstanceData>() * 100_000;
 
 struct App {
     ctx: Box<dyn RenderingBackend>,
@@ -35,8 +36,9 @@ struct App {
     rotation_speed: f64,
 
     ground: Vec<InstanceData>,
+    objects: Vec<Object>,
+    voxels: Vec<Voxel>,
 
-    flowers: Vec<Object>,
     cube: (Bindings, i32),
     // Beware of the pipeline
     mouse_left_down: bool,
@@ -158,8 +160,6 @@ impl App {
                 ..Default::default()
             },
         );
-        // let voxels = bresenham(Voxel::ZERO, Voxel::new(10, 5, 3));
-
         let mut app = Self {
             #[cfg(feature = "egui")]
             egui_mq: egui_miniquad::EguiMq::new(&mut *ctx),
@@ -172,7 +172,8 @@ impl App {
             rotation_speed: 1.0,
             ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, Perlin::new(555)),
             cube: (bindings, indices.len() as i32),
-            flowers: vec![flower(0)],
+            objects: vec![tree(0)],
+            voxels: vec![],
             mouse_left_down: false,
             mouse_right_down: false,
             mouse_downpos: (0.0, 0.0),
@@ -211,12 +212,8 @@ impl App {
     }
 
     fn camera_matrix(&mut self) -> Mat4 {
-        let scale = 5.0;
-        Mat4::look_at_rh(
-            scale * Vec3::new(0.0, 0.0, 5.0),
-            scale * Vec3::ZERO,
-            Vec3::Y,
-        )
+        let scale = 20.0;
+        Mat4::look_at_rh(scale * Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, Vec3::Y)
     }
 
     fn trackball_control(&mut self, screen_pos: (f32, f32)) {
@@ -227,6 +224,75 @@ impl App {
         );
         let axis = Mat3::from_mat4(self.camera_matrix()).inverse() * axis;
         self.trackball_matrix = arb_rotate(axis, axis.length() / 50.0) * self.trackball_matrix;
+    }
+
+    fn draw_ground(&mut self, projection: Mat4, camera: Mat4) {
+        self.ctx.buffer_update(
+            self.cube.0.vertex_buffers[1],
+            BufferSource::slice(&self.ground),
+        );
+        self.ctx
+            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                proj_matrix: projection,
+                model_matrix: camera,
+            }));
+        self.ctx.draw(0, self.cube.1, self.ground.len() as i32);
+    }
+
+    fn draw_objects(&mut self, projection: Mat4, camera: Mat4) {
+        let objects = self.objects.iter();
+        for model in objects.flatten() {
+            let instance_data: Vec<_> = model
+                .points
+                .iter()
+                .copied()
+                .map(
+                    |Voxel {
+                         position: Point { x, y, z },
+                         color,
+                     }| InstanceData {
+                        position: Vec3::new(x as f32, y as f32, z as f32),
+                        color,
+                    },
+                )
+                .collect();
+            self.ctx.buffer_update(
+                self.cube.0.vertex_buffers[1],
+                BufferSource::slice(&instance_data),
+            );
+            self.ctx
+                .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                    proj_matrix: projection,
+                    model_matrix: camera
+                        * Mat4::from_rotation_translation(model.rotation, model.translation),
+                }));
+            self.ctx.draw(0, self.cube.1, model.points.len() as i32);
+        }
+    }
+
+    fn draw_voxels(&mut self, projection: Mat4, camera: Mat4) {
+        let data: Vec<_> = self
+            .voxels
+            .iter()
+            .copied()
+            .map(
+                |Voxel {
+                     position: Point { x, y, z },
+                     color,
+                 }| InstanceData {
+                    position: Vec3::new(x as f32, y as f32, z as f32),
+                    color,
+                },
+            )
+            .collect();
+        self.ctx
+            .buffer_update(self.cube.0.vertex_buffers[1], BufferSource::slice(&data));
+        self.ctx
+            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                proj_matrix: projection,
+                model_matrix: camera,
+            }));
+        self.ctx.draw(0, self.cube.1, data.len() as i32);
     }
 }
 
@@ -250,59 +316,14 @@ impl EventHandler for App {
         // Beware the pipeline
         self.ctx.apply_pipeline(&self.pipeline);
 
-        let proj_matrix =
+        let projection =
             Mat4::perspective_rh_gl(self.fov_y_radians, self.aspect_ratio, 0.1, 1000.0);
         let camera = self.camera_matrix() * self.trackball_matrix;
 
         self.ctx.apply_bindings(&self.cube.0);
-        self.ctx
-            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                proj_matrix,
-                model_matrix: camera,
-            }));
-        self.ctx.apply_bindings(&self.cube.0);
-
-        // Draw ground
-        self.ctx.buffer_update(
-            self.cube.0.vertex_buffers[1],
-            BufferSource::slice(&self.ground),
-        );
-        self.ctx
-            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                proj_matrix,
-                model_matrix: camera,
-            }));
-        self.ctx.draw(0, self.cube.1, self.ground.len() as i32);
-
-        // Draw objects
-        let objects = self.flowers.iter();
-        for model in objects.flatten() {
-            let instance_data: Vec<_> = model
-                .points
-                .iter()
-                .copied()
-                .map(
-                    |Voxel {
-                         position: Point { x, y, z },
-                         color,
-                     }| InstanceData {
-                        position: Vec3::new(x as f32, y as f32, z as f32),
-                        color,
-                    },
-                )
-                .collect();
-            self.ctx.buffer_update(
-                self.cube.0.vertex_buffers[1],
-                BufferSource::slice(&instance_data),
-            );
-            self.ctx
-                .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                    proj_matrix,
-                    model_matrix: camera
-                        * Mat4::from_rotation_translation(model.rotation, model.translation),
-                }));
-            self.ctx.draw(0, self.cube.1, model.points.len() as i32);
-        }
+        // self.draw_ground(projection, camera);
+        self.draw_objects(projection, camera);
+        // self.draw_voxels(projection, camera);
 
         self.ctx.end_render_pass();
 
