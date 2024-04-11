@@ -276,27 +276,35 @@ impl EventHandler for App {
                 look_h,
                 look_v,
             } => {
-                let movement_vector = if self.keys_down.get(&KeyCode::W).copied().unwrap_or(false) {
+                let mut movement_vector = Vec4::ZERO;
+                if self.keys_down.get(&KeyCode::W).copied().unwrap_or(false) {
                     // forward
-                    Some(Vec4::Z)
-                } else if self.keys_down.get(&KeyCode::S).copied().unwrap_or(false) {
+                    movement_vector += Vec4::Z;
+                }
+                if self.keys_down.get(&KeyCode::S).copied().unwrap_or(false) {
                     // backward
-                    Some(-Vec4::Z)
-                } else if self.keys_down.get(&KeyCode::A).copied().unwrap_or(false) {
+                    movement_vector += -Vec4::Z;
+                }
+                if self.keys_down.get(&KeyCode::A).copied().unwrap_or(false) {
                     // left
-                    Some(-Vec4::X)
-                } else if self.keys_down.get(&KeyCode::D).copied().unwrap_or(false) {
+                    movement_vector += -Vec4::X;
+                }
+                if self.keys_down.get(&KeyCode::D).copied().unwrap_or(false) {
                     // right
-                    Some(Vec4::X)
-                } else {
-                    None
-                };
-                if let Some(v) = movement_vector {
+                    movement_vector += Vec4::X;
+                }
+                if self.keys_down.get(&KeyCode::R).copied().unwrap_or(false) {
+                    movement_vector += -Vec4::Y;
+                }
+                if self.keys_down.get(&KeyCode::F).copied().unwrap_or(false) {
+                    movement_vector += Vec4::Y;
+                }
+                if movement_vector.length_squared() != 0.0 {
                     let rot_mat = Mat4::from_quat(
                         (Quat::from_rotation_y(*look_h) * Quat::from_rotation_x(*look_v))
                             .normalize(),
                     );
-                    *position += (rot_mat * v).truncate() * delta;
+                    *position += (rot_mat * movement_vector.normalize()).truncate() * delta;
                 }
             }
         }
@@ -400,7 +408,7 @@ impl EventHandler for App {
 
         let draw_end = Instant::now();
         self.frame_times
-            .push(draw_end.duration_since(draw_start).as_secs_f32() * 1000.0)
+            .push(draw_end.duration_since(draw_start).as_secs_f32() * 1000.0);
     }
 
     fn mouse_motion_event(&mut self, x: f32, y: f32) {
