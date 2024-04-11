@@ -1,3 +1,4 @@
+use std::mem::size_of;
 use std::time::Instant;
 
 use glam::{IVec3, Mat3, Mat4, Quat, Vec3, Vec4};
@@ -15,10 +16,11 @@ use utils::arb_rotate;
 mod models;
 mod utils;
 
-pub type Point = IVec3;
-pub type Color = Vec4;
+type Point = IVec3;
+type Color = Vec4;
+type Object = Vec<Model>;
 
-const MAX_VOXELS: usize = 100000000;
+const MAX_INSTANCE_DATA: usize = size_of::<InstanceData>() * 100000;
 
 struct App {
     ctx: Box<dyn RenderingBackend>,
@@ -33,7 +35,7 @@ struct App {
     rotation_speed: f64,
 
     ground: Vec<Voxel>,
-    flowers: Vec<Model>,
+    flowers: Vec<Object>,
     cube: (Bindings, i32),
     // Beware of the pipeline
     mouse_left_down: bool,
@@ -125,7 +127,7 @@ impl App {
         let positions_vertex_buffer = ctx.new_buffer(
             BufferType::VertexBuffer,
             BufferUsage::Stream, // TODO: dynamic?
-            BufferSource::empty::<InstanceData>(MAX_VOXELS),
+            BufferSource::empty::<InstanceData>(MAX_INSTANCE_DATA),
         );
 
         let bindings = Bindings {
@@ -208,10 +210,11 @@ impl App {
     }
 
     fn camera_matrix(&mut self) -> Mat4 {
+        let scale = 5.0;
         Mat4::look_at_rh(
-            10.0 * Vec3::new(0.0, 0.0, 5.0),
-            10.0 * Vec3::ZERO,
-            10.0 * Vec3::Y,
+            scale * Vec3::new(0.0, 0.0, 5.0),
+            scale * Vec3::ZERO,
+            Vec3::Y,
         )
     }
 
@@ -258,7 +261,7 @@ impl EventHandler for App {
             }));
         self.ctx.apply_bindings(&self.cube.0);
 
-        // Here
+        // Draw ground
         self.ctx.buffer_update(
             self.cube.0.vertex_buffers[1],
             BufferSource::slice(
@@ -288,8 +291,9 @@ impl EventHandler for App {
             }));
         self.ctx.draw(0, self.cube.1, self.ground.len() as i32);
 
-        let models = self.flowers.iter();
-        for model in models {
+        // Draw objects
+        let objects = self.flowers.iter();
+        for model in objects.flatten() {
             let instance_data: Vec<_> = model
                 .points
                 .iter()
