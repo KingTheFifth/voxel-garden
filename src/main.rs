@@ -1,5 +1,3 @@
-use noise::Perlin;
-use std::f32::consts::PI;
 use std::mem::size_of;
 use std::time::Instant;
 
@@ -10,11 +8,12 @@ use miniquad::{
     UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
 use models::flower::flower;
+use models::terrain::generate_terrain;
+use noise::Perlin;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use utils::arb_rotate;
 
 mod models;
-use models::terrain::generate_terrain;
 mod utils;
 
 type Point = IVec3;
@@ -25,6 +24,8 @@ const MAX_INSTANCE_DATA: usize = size_of::<InstanceData>() * 100000;
 
 struct App {
     ctx: Box<dyn RenderingBackend>,
+    aspect_ratio: f32,
+    fov_y_radians: f32,
     #[cfg(feature = "egui")]
     egui_mq: egui_miniquad::EguiMq,
     pipeline: Pipeline,
@@ -73,6 +74,7 @@ struct InstanceData {
 impl App {
     fn new() -> Self {
         let mut ctx: Box<dyn RenderingBackend> = window::new_rendering_backend();
+        let (window_width, window_height) = window::screen_size();
         let shader = ctx
             .new_shader(
                 ShaderSource::Glsl {
@@ -157,10 +159,12 @@ impl App {
         );
         // let voxels = bresenham(Voxel::ZERO, Voxel::new(10, 5, 3));
 
-        Self {
+        let mut app = Self {
             #[cfg(feature = "egui")]
             egui_mq: egui_miniquad::EguiMq::new(&mut *ctx),
             ctx,
+            aspect_ratio: 1.0,
+            fov_y_radians: 1.0,
             pipeline,
             prev_t: 0.0,
             frame_times: AllocRingBuffer::new(10),
@@ -173,7 +177,9 @@ impl App {
             mouse_downpos: (0.0, 0.0),
             mouse_prevpos: (0.0, 0.0),
             trackball_matrix: Mat4::IDENTITY,
-        }
+        };
+        app.resize_event(window_width, window_height);
+        app
     }
 
     #[cfg(feature = "egui")]
@@ -226,6 +232,11 @@ impl App {
 impl EventHandler for App {
     fn update(&mut self) {}
 
+    fn resize_event(&mut self, width: f32, height: f32) {
+        self.aspect_ratio = width / height;
+        self.fov_y_radians = height / 1000.0;
+    }
+
     fn draw(&mut self) {
         let draw_start = Instant::now();
 
@@ -238,7 +249,8 @@ impl EventHandler for App {
         // Beware the pipeline
         self.ctx.apply_pipeline(&self.pipeline);
 
-        let proj_matrix = Mat4::perspective_rh_gl(PI / 2.0, 1.0, 0.1, 1000.0);
+        let proj_matrix =
+            Mat4::perspective_rh_gl(self.fov_y_radians, self.aspect_ratio, 0.1, 1000.0);
         let camera = self.camera_matrix() * self.trackball_matrix;
 
         self.ctx.apply_bindings(&self.cube.0);
