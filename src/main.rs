@@ -276,8 +276,27 @@ impl EventHandler for App {
                 look_h,
                 look_v,
             } => {
-                if self.keys_down.get(&KeyCode::W).copied().unwrap_or(false) {
-                    todo!()
+                let movement_vector = if self.keys_down.get(&KeyCode::W).copied().unwrap_or(false) {
+                    // forward
+                    Some(Vec4::Z)
+                } else if self.keys_down.get(&KeyCode::S).copied().unwrap_or(false) {
+                    // backward
+                    Some(-Vec4::Z)
+                } else if self.keys_down.get(&KeyCode::A).copied().unwrap_or(false) {
+                    // left
+                    Some(-Vec4::X)
+                } else if self.keys_down.get(&KeyCode::D).copied().unwrap_or(false) {
+                    // right
+                    Some(Vec4::X)
+                } else {
+                    None
+                };
+                if let Some(v) = movement_vector {
+                    let rot_mat = Mat4::from_quat(
+                        (Quat::from_rotation_y(*look_h) * Quat::from_rotation_x(*look_v))
+                            .normalize(),
+                    );
+                    *position += (rot_mat * v).truncate() * delta;
                 }
             }
         }
