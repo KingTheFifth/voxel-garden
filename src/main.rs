@@ -253,25 +253,7 @@ impl EventHandler for App {
         // Draw ground
         self.ctx.buffer_update(
             self.cube.0.vertex_buffers[1],
-            BufferSource::slice(
-                &self.ground, /*
-                              .iter()
-                              .map(|voxel| InstanceData {
-                                  position: Vec3::new(
-                                      voxel.position.x as f32,
-                                      voxel.position.y as f32,
-                                      voxel.position.z as f32,
-                                  ),
-                                  color: Vec4::new(
-                                      voxel.color.x,
-                                      voxel.color.y,
-                                      voxel.color.z,
-                                      voxel.color.w,
-                                  ),
-                              })
-                              .collect::<Vec<_>>(),
-                              */
-            ),
+            BufferSource::slice(&self.ground),
         );
         self.ctx
             .apply_uniforms(UniformsSource::table(&shader::Uniforms {
