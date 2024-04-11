@@ -34,7 +34,8 @@ struct App {
     frame_times: AllocRingBuffer<f32>,
     rotation_speed: f64,
 
-    ground: Vec<Voxel>,
+    ground: Vec<InstanceData>,
+
     flowers: Vec<Object>,
     cube: (Bindings, i32),
     // Beware of the pipeline
@@ -46,16 +47,10 @@ struct App {
     trackball_matrix: Mat4,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct Voxel {
     position: Point,
     color: Color,
-}
-
-impl Voxel {
-    fn new(position: Point, color: Vec4) -> Voxel {
-        Voxel { position, color }
-    }
 }
 
 #[derive(Clone)]
@@ -69,6 +64,12 @@ struct Model {
 struct InstanceData {
     position: Vec3,
     color: Vec4,
+}
+
+impl InstanceData {
+    fn new(position: Vec3, color: Vec4) -> InstanceData {
+        InstanceData { position, color }
+    }
 }
 
 impl App {
@@ -146,7 +147,7 @@ impl App {
             ],
             &[
                 VertexAttribute::with_buffer("in_position", VertexFormat::Float3, 0),
-                VertexAttribute::with_buffer("in_inst_position", VertexFormat::Float3, 1), // TODO: VertexFormat::Int32?
+                VertexAttribute::with_buffer("in_inst_position", VertexFormat::Float3, 1),
                 VertexAttribute::with_buffer("in_inst_color", VertexFormat::Float4, 1),
             ],
             shader,
@@ -264,25 +265,7 @@ impl EventHandler for App {
         // Draw ground
         self.ctx.buffer_update(
             self.cube.0.vertex_buffers[1],
-            BufferSource::slice(
-                &self
-                    .ground
-                    .iter()
-                    .map(|voxel| InstanceData {
-                        position: Vec3::new(
-                            voxel.position.x as f32,
-                            voxel.position.y as f32,
-                            voxel.position.z as f32,
-                        ),
-                        color: Vec4::new(
-                            voxel.color.x,
-                            voxel.color.y,
-                            voxel.color.z,
-                            voxel.color.w,
-                        ),
-                    })
-                    .collect::<Vec<_>>(),
-            ),
+            BufferSource::slice(&self.ground),
         );
         self.ctx
             .apply_uniforms(UniformsSource::table(&shader::Uniforms {
