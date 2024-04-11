@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::f32::consts::PI;
 use std::mem::size_of;
 use std::time::Instant;
 
@@ -26,6 +25,8 @@ const MAX_INSTANCE_DATA: usize = size_of::<InstanceData>() * 100_000;
 
 struct App {
     ctx: Box<dyn RenderingBackend>,
+    aspect_ratio: f32,
+    fov_y_radians: f32,
     #[cfg(feature = "egui")]
     egui_mq: egui_miniquad::EguiMq,
     pipeline: Pipeline,
@@ -34,7 +35,8 @@ struct App {
     frame_times: AllocRingBuffer<f32>,
     rotation_speed: f64,
 
-    ground: Vec<Voxel>,
+    ground: Vec<InstanceData>,
+
     flowers: Vec<Object>,
     cube: (Bindings, i32),
     keys_down: HashMap<KeyCode, bool>,
@@ -56,16 +58,10 @@ enum Movement {
     },
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct Voxel {
     position: Point,
     color: Color,
-}
-
-impl Voxel {
-    fn new(position: Point, color: Vec4) -> Voxel {
-        Voxel { position, color }
-    }
 }
 
 #[derive(Clone)]
@@ -81,9 +77,16 @@ struct InstanceData {
     color: Vec4,
 }
 
+impl InstanceData {
+    fn new(position: Vec3, color: Vec4) -> InstanceData {
+        InstanceData { position, color }
+    }
+}
+
 impl App {
     fn new() -> Self {
         let mut ctx: Box<dyn RenderingBackend> = window::new_rendering_backend();
+        let (window_width, window_height) = window::screen_size();
         let shader = ctx
             .new_shader(
                 ShaderSource::Glsl {
@@ -155,7 +158,7 @@ impl App {
             ],
             &[
                 VertexAttribute::with_buffer("in_position", VertexFormat::Float3, 0),
-                VertexAttribute::with_buffer("in_inst_position", VertexFormat::Float3, 1), // TODO: VertexFormat::Int32?
+                VertexAttribute::with_buffer("in_inst_position", VertexFormat::Float3, 1),
                 VertexAttribute::with_buffer("in_inst_color", VertexFormat::Float4, 1),
             ],
             shader,
@@ -168,10 +171,12 @@ impl App {
         );
         // let voxels = bresenham(Voxel::ZERO, Voxel::new(10, 5, 3));
 
-        Self {
+        let mut app = Self {
             #[cfg(feature = "egui")]
             egui_mq: egui_miniquad::EguiMq::new(&mut *ctx),
             ctx,
+            aspect_ratio: 1.0,
+            fov_y_radians: 1.0,
             pipeline,
             prev_t: 0.0,
             frame_times: AllocRingBuffer::new(10),
@@ -188,7 +193,9 @@ impl App {
                 look_h: 0.0,
                 look_v: 0.0,
             },
-        }
+        };
+        app.resize_event(window_width, window_height);
+        app
     }
 
     #[cfg(feature = "egui")]
@@ -310,6 +317,11 @@ impl EventHandler for App {
         }
     }
 
+    fn resize_event(&mut self, width: f32, height: f32) {
+        self.aspect_ratio = width / height;
+        self.fov_y_radians = height / 1000.0;
+    }
+
     fn draw(&mut self) {
         let draw_start = Instant::now();
 
@@ -318,7 +330,8 @@ impl EventHandler for App {
         // Beware the pipeline
         self.ctx.apply_pipeline(&self.pipeline);
 
-        let proj_matrix = Mat4::perspective_rh_gl(PI / 2.0, 1.0, 0.1, 1000.0);
+        let proj_matrix =
+            Mat4::perspective_rh_gl(self.fov_y_radians, self.aspect_ratio, 0.1, 1000.0);
         let camera = match self.movement {
             Movement::Trackball {
                 down_pos: _,
@@ -342,25 +355,7 @@ impl EventHandler for App {
         // Draw ground
         self.ctx.buffer_update(
             self.cube.0.vertex_buffers[1],
-            BufferSource::slice(
-                &self
-                    .ground
-                    .iter()
-                    .map(|voxel| InstanceData {
-                        position: Vec3::new(
-                            voxel.position.x as f32,
-                            voxel.position.y as f32,
-                            voxel.position.z as f32,
-                        ),
-                        color: Vec4::new(
-                            voxel.color.x,
-                            voxel.color.y,
-                            voxel.color.z,
-                            voxel.color.w,
-                        ),
-                    })
-                    .collect::<Vec<_>>(),
-            ),
+            BufferSource::slice(&self.ground),
         );
         self.ctx
             .apply_uniforms(UniformsSource::table(&shader::Uniforms {
