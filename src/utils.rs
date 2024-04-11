@@ -13,6 +13,7 @@ pub const WHITE: Vec4 = Vec4::new(1.0, 1.0, 1.0, 1.0);
 pub const BLACK: Vec4 = Vec4::new(0.0, 0.0, 0.0, 1.0);
 pub const ORANGE: Vec4 = Vec4::new(1.0, 0.5, 0.0, 1.0);
 pub const BROWN: Vec4 = Vec4::new(0.5, 0.2, 0.0, 1.0);
+pub const YELLOW: Vec4 = Vec4::new(1.0, 1.0, 0.0, 1.0);
 
 /// Profile a function.
 ///

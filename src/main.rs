@@ -1,4 +1,4 @@
-use std::f32::consts::PI;
+use std::mem::size_of;
 
 use glam::{IVec3, Mat3, Mat4, Quat, Vec3, Vec4};
 use miniquad::{
@@ -14,10 +14,11 @@ use utils::arb_rotate;
 mod models;
 mod utils;
 
-pub type Point = IVec3;
-pub type Color = Vec4;
+type Point = IVec3;
+type Color = Vec4;
+type Object = Vec<Model>;
 
-const MAX_VOXELS: usize = 100000000;
+const MAX_INSTANCE_DATA: usize = size_of::<InstanceData>() * 100000;
 
 #[cfg(feature = "egui")]
 struct EguiContext {
@@ -26,6 +27,8 @@ struct EguiContext {
 
 struct App {
     ctx: Box<dyn RenderingBackend>,
+    aspect_ratio: f32,
+    fov_y_radians: f32,
     #[cfg(feature = "egui")]
     egui_ctx: EguiContext,
     pipeline: Pipeline,
@@ -33,8 +36,9 @@ struct App {
 
     rotation_speed: f64,
 
-    ground: Vec<Voxel>,
-    flowers: Vec<Model>,
+    ground: Vec<InstanceData>,
+    flowers: Vec<Object>,
+
     cube: (Bindings, i32),
     // Beware of the pipeline
     mouse_left_down: bool,
@@ -45,16 +49,10 @@ struct App {
     trackball_matrix: Mat4,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct Voxel {
     position: Point,
     color: Color,
-}
-
-impl Voxel {
-    fn new(position: Point, color: Vec4) -> Voxel {
-        Voxel { position, color }
-    }
 }
 
 #[derive(Clone)]
@@ -70,9 +68,16 @@ struct InstanceData {
     color: Vec4,
 }
 
+impl InstanceData {
+    fn new(position: Vec3, color: Vec4) -> InstanceData {
+        InstanceData { position, color }
+    }
+}
+
 impl App {
     fn new() -> Self {
         let mut ctx: Box<dyn RenderingBackend> = window::new_rendering_backend();
+        let (window_width, window_height) = window::screen_size();
         let shader = ctx
             .new_shader(
                 ShaderSource::Glsl {
@@ -125,7 +130,7 @@ impl App {
         let positions_vertex_buffer = ctx.new_buffer(
             BufferType::VertexBuffer,
             BufferUsage::Stream, // TODO: dynamic?
-            BufferSource::empty::<InstanceData>(MAX_VOXELS),
+            BufferSource::empty::<InstanceData>(MAX_INSTANCE_DATA),
         );
 
         let bindings = Bindings {
@@ -144,7 +149,7 @@ impl App {
             ],
             &[
                 VertexAttribute::with_buffer("in_position", VertexFormat::Float3, 0),
-                VertexAttribute::with_buffer("in_inst_position", VertexFormat::Float3, 1), // TODO: VertexFormat::Int32?
+                VertexAttribute::with_buffer("in_inst_position", VertexFormat::Float3, 1),
                 VertexAttribute::with_buffer("in_inst_color", VertexFormat::Float4, 1),
             ],
             shader,
@@ -157,17 +162,18 @@ impl App {
         );
         // let voxels = bresenham(Voxel::ZERO, Voxel::new(10, 5, 3));
 
-        let terrain_noise = Perlin::new(555);
-        Self {
+        let mut app = Self {
             #[cfg(feature = "egui")]
             egui_ctx: EguiContext {
                 mq: egui_miniquad::EguiMq::new(&mut *ctx),
             },
             ctx,
+            aspect_ratio: 1.0,
+            fov_y_radians: 1.0,
             pipeline,
             prev_t: 0.0,
             rotation_speed: 1.0,
-            ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, terrain_noise),
+            ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, Perlin::new(555)),
             cube: (bindings, indices.len() as i32),
             flowers: vec![flower(0)],
             mouse_left_down: false,
@@ -175,7 +181,9 @@ impl App {
             mouse_downpos: (0.0, 0.0),
             mouse_prevpos: (0.0, 0.0),
             trackball_matrix: Mat4::IDENTITY,
-        }
+        };
+        app.resize_event(window_width, window_height);
+        app
     }
 
     #[cfg(feature = "egui")]
@@ -212,10 +220,11 @@ impl App {
     }
 
     fn camera_matrix(&mut self) -> Mat4 {
+        let scale = 5.0;
         Mat4::look_at_rh(
-            10.0 * Vec3::new(0.0, 0.0, 5.0),
-            10.0 * Vec3::ZERO,
-            10.0 * Vec3::Y,
+            scale * Vec3::new(0.0, 0.0, 5.0),
+            scale * Vec3::ZERO,
+            Vec3::Y,
         )
     }
 
@@ -233,6 +242,11 @@ impl App {
 impl EventHandler for App {
     fn update(&mut self) {}
 
+    fn resize_event(&mut self, width: f32, height: f32) {
+        self.aspect_ratio = width / height;
+        self.fov_y_radians = height / 1000.0;
+    }
+
     fn draw(&mut self) {
         profile_function!();
 
@@ -248,46 +262,27 @@ impl EventHandler for App {
         // Beware the pipeline
         self.ctx.apply_pipeline(&self.pipeline);
 
-        let proj_matrix = Mat4::perspective_rh_gl(PI / 2.0, 1.0, 0.1, 1000.0);
+        let proj_matrix =
+            Mat4::perspective_rh_gl(self.fov_y_radians, self.aspect_ratio, 0.1, 1000.0);
         let camera = self.camera_matrix() * self.trackball_matrix;
 
         self.ctx.apply_bindings(&self.cube.0);
 
         // Draw ground
-        profile!("draw ground", {
-            self.ctx.buffer_update(
-                self.cube.0.vertex_buffers[1],
-                BufferSource::slice(
-                    &self
-                        .ground
-                        .iter()
-                        .map(|voxel| InstanceData {
-                            position: Vec3::new(
-                                voxel.position.x as f32,
-                                voxel.position.y as f32,
-                                voxel.position.z as f32,
-                            ),
-                            color: Vec4::new(
-                                voxel.color.x,
-                                voxel.color.y,
-                                voxel.color.z,
-                                voxel.color.w,
-                            ),
-                        })
-                        .collect::<Vec<_>>(),
-                ),
-            );
-            self.ctx
-                .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                    proj_matrix,
-                    model_matrix: camera,
-                }));
-            self.ctx.draw(0, self.cube.1, self.ground.len() as i32);
-        });
+        self.ctx.buffer_update(
+            self.cube.0.vertex_buffers[1],
+            BufferSource::slice(&self.ground),
+        );
+        self.ctx
+            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                proj_matrix,
+                model_matrix: camera,
+            }));
+        self.ctx.draw(0, self.cube.1, self.ground.len() as i32);
 
-        let models = self.flowers.iter();
-        for model in models {
-            profile_in_scope!("draw model");
+        // Draw objects
+        let objects = self.flowers.iter();
+        for model in objects.flatten() {
             let instance_data: Vec<_> = model
                 .points
                 .iter()
