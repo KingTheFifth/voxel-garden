@@ -1,5 +1,4 @@
 use std::mem::size_of;
-use std::time::Instant;
 
 use glam::{IVec3, Mat3, Mat4, Quat, Vec3, Vec4};
 use miniquad::{
@@ -29,16 +28,16 @@ struct App {
     #[cfg(feature = "egui")]
     egui_mq: egui_miniquad::EguiMq,
     pipeline: Pipeline,
-    prev_t: f64,
+    cube: (Bindings, i32),
 
-    frame_times: AllocRingBuffer<f32>,
-    rotation_speed: f64,
+    prev_update: f64,
+    prev_draw: f64,
+    fps_history: AllocRingBuffer<f64>,
+    view_fps_graph: bool,
 
     ground: Vec<InstanceData>,
-
     flowers: Vec<Object>,
-    cube: (Bindings, i32),
-    // Beware of the pipeline
+
     mouse_left_down: bool,
     mouse_right_down: bool,
     mouse_downpos: (f32, f32),
@@ -167,9 +166,10 @@ impl App {
             aspect_ratio: 1.0,
             fov_y_radians: 1.0,
             pipeline,
-            prev_t: 0.0,
-            frame_times: AllocRingBuffer::new(10),
-            rotation_speed: 1.0,
+            prev_update: 0.0,
+            prev_draw: 0.0,
+            fps_history: AllocRingBuffer::new(256),
+            view_fps_graph: false,
             ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, Perlin::new(555)),
             cube: (bindings, indices.len() as i32),
             flowers: vec![flower(0)],
@@ -185,26 +185,44 @@ impl App {
 
     #[cfg(feature = "egui")]
     fn egui_ui(&mut self) {
+        use egui::{TopBottomPanel, Window};
+        use egui_plot::{Line, Plot, PlotPoints};
+
         self.egui_mq.run(&mut *self.ctx, |_ctx, egui_ctx| {
-            egui::TopBottomPanel::top("top bar").show(egui_ctx, |ui| {
-                ui.menu_button("File", |ui| {
-                    if ui.button("Quit").clicked() {
-                        unimplemented!("this is ironic");
-                    }
+            TopBottomPanel::top("top bar").show(egui_ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.menu_button("File", |ui| {
+                        if ui.button("Quit").clicked() {
+                            unimplemented!("this is ironic");
+                        }
+                    });
+                    ui.menu_button("View", |ui| {
+                        ui.checkbox(&mut self.view_fps_graph, "FPS graph");
+                    });
                 });
             });
 
-            egui::Window::new("Debug").show(egui_ctx, |ui| {
-                // temporary, to show how to change values
-                ui.add(
-                    egui::Slider::new(&mut self.rotation_speed, (0.1)..=10.0).clamp_to_range(true),
-                );
-
-                ui.label(format!(
-                    "Average frame time: {:.2} ms",
-                    self.frame_times.iter().sum::<f32>() / self.frame_times.len() as f32
-                ));
-            });
+            Window::new("FPS")
+                .collapsible(false)
+                .open(&mut self.view_fps_graph)
+                .default_height(200.0)
+                .default_width(300.0)
+                .show(egui_ctx, |ui| {
+                    let fps_points: PlotPoints = self
+                        .fps_history
+                        .iter()
+                        .enumerate()
+                        .map(|(x, y)| [x as f64, *y])
+                        .collect();
+                    Plot::new("fps plot")
+                        .include_y(0.0)
+                        .include_y(60.0)
+                        .allow_drag(false)
+                        .allow_scroll(false)
+                        .show_background(false)
+                        .show_x(false)
+                        .show(ui, |plot_ui| plot_ui.line(Line::new(fps_points)));
+                });
         });
 
         self.egui_mq.draw(&mut *self.ctx);
@@ -231,7 +249,11 @@ impl App {
 }
 
 impl EventHandler for App {
-    fn update(&mut self) {}
+    fn update(&mut self) {
+        let now = date::now();
+        let _delta = now - self.prev_update;
+        self.prev_update = now;
+    }
 
     fn resize_event(&mut self, width: f32, height: f32) {
         self.aspect_ratio = width / height;
@@ -239,11 +261,9 @@ impl EventHandler for App {
     }
 
     fn draw(&mut self) {
-        let draw_start = Instant::now();
-
-        let t = date::now();
-        let _delta = (t - self.prev_t) as f32;
-        self.prev_t = t;
+        let now = date::now();
+        let draw_delta = now - self.prev_draw;
+        self.prev_draw = now;
 
         self.ctx
             .begin_default_pass(PassAction::clear_color(0.1, 0.1, 0.1, 1.0));
@@ -311,9 +331,7 @@ impl EventHandler for App {
 
         self.ctx.commit_frame();
 
-        let draw_end = Instant::now();
-        self.frame_times
-            .push(draw_end.duration_since(draw_start).as_secs_f32() * 1000.0)
+        self.fps_history.push(1.0 / draw_delta);
     }
 
     fn mouse_motion_event(&mut self, x: f32, y: f32) {
