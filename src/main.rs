@@ -294,17 +294,17 @@ impl EventHandler for App {
                 }
                 if self.keys_down.get(&KeyCode::A).copied().unwrap_or(false) {
                     // left
-                    movement_vector += -Vec4::X;
+                    movement_vector += Vec4::X;
                 }
                 if self.keys_down.get(&KeyCode::D).copied().unwrap_or(false) {
                     // right
-                    movement_vector += Vec4::X;
+                    movement_vector += -Vec4::X;
                 }
                 if self.keys_down.get(&KeyCode::R).copied().unwrap_or(false) {
-                    movement_vector += -Vec4::Y;
+                    movement_vector += Vec4::Y;
                 }
                 if self.keys_down.get(&KeyCode::F).copied().unwrap_or(false) {
-                    movement_vector += Vec4::Y;
+                    movement_vector += -Vec4::Y;
                 }
                 if movement_vector.length_squared() != 0.0 {
                     let rot_mat = Mat4::from_quat(
@@ -427,7 +427,7 @@ impl EventHandler for App {
                 look_v,
             } => {
                 *look_h += (self.mouse_prev_pos.0 - x) / 100.0;
-                *look_v += (self.mouse_prev_pos.1 - y) / 100.0;
+                *look_v -= (self.mouse_prev_pos.1 - y) / 100.0;
             }
         }
         self.mouse_prev_pos = (x, y);
