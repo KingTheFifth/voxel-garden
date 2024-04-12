@@ -214,6 +214,7 @@ impl App {
                     });
                     ui.menu_button("View", |ui| {
                         ui.checkbox(&mut self.view_fps_graph, "FPS graph");
+                        ui.separator();
                         if ui.button("Switch to trackball camera").clicked() {
                             self.movement = Movement::Trackball {
                                 down_pos: (0.0, 0.0),
