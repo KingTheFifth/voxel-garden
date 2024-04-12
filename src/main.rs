@@ -1,18 +1,18 @@
+use std::collections::HashMap;
 use std::mem::size_of;
 use std::time::Instant;
 
 use glam::{IVec3, Mat3, Mat4, Quat, Vec3, Vec4};
 use miniquad::{
     conf, date, window, Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, Comparison,
-    CullFace, EventHandler, PassAction, Pipeline, PipelineParams, RenderingBackend, ShaderSource,
-    UniformsSource, VertexAttribute, VertexFormat, VertexStep,
+    CullFace, EventHandler, KeyCode, PassAction, Pipeline, PipelineParams, RenderingBackend,
+    ShaderSource, UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
-use models::primitives::sphere;
 use models::terrain::generate_terrain;
 use models::tree::tree;
 use noise::Perlin;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
-use utils::{arb_rotate, WHITE};
+use utils::arb_rotate;
 
 mod models;
 mod utils;
@@ -40,13 +40,23 @@ struct App {
     voxels: Vec<Voxel>,
 
     cube: (Bindings, i32),
-    // Beware of the pipeline
+    keys_down: HashMap<KeyCode, bool>,
     mouse_left_down: bool,
     mouse_right_down: bool,
-    mouse_downpos: (f32, f32),
-    mouse_prevpos: (f32, f32),
+    mouse_prev_pos: (f32, f32),
+    movement: Movement,
+}
 
-    trackball_matrix: Mat4,
+enum Movement {
+    Trackball {
+        down_pos: (f32, f32),
+        matrix: Mat4,
+    },
+    Flying {
+        position: Vec3,
+        look_h: f32,
+        look_v: f32,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -174,11 +184,15 @@ impl App {
             cube: (bindings, indices.len() as i32),
             objects: vec![tree(0)],
             voxels: vec![],
+            keys_down: HashMap::new(),
             mouse_left_down: false,
             mouse_right_down: false,
-            mouse_downpos: (0.0, 0.0),
-            mouse_prevpos: (0.0, 0.0),
-            trackball_matrix: Mat4::IDENTITY,
+            mouse_prev_pos: (0.0, 0.0),
+            movement: Movement::Flying {
+                position: Vec3::ZERO,
+                look_h: 0.0,
+                look_v: 0.0,
+            },
         };
         app.resize_event(window_width, window_height);
         app
@@ -188,10 +202,27 @@ impl App {
     fn egui_ui(&mut self) {
         self.egui_mq.run(&mut *self.ctx, |_ctx, egui_ctx| {
             egui::TopBottomPanel::top("top bar").show(egui_ctx, |ui| {
-                ui.menu_button("File", |ui| {
-                    if ui.button("Quit").clicked() {
-                        unimplemented!("this is ironic");
-                    }
+                ui.horizontal(|ui| {
+                    ui.menu_button("File", |ui| {
+                        if ui.button("Quit").clicked() {
+                            unimplemented!("this is ironic");
+                        }
+                    });
+                    ui.menu_button("View", |ui| {
+                        if ui.button("Switch to trackball camera").clicked() {
+                            self.movement = Movement::Trackball {
+                                down_pos: (0.0, 0.0),
+                                matrix: Mat4::IDENTITY,
+                            }
+                        }
+                        if ui.button("Switch to flying camera").clicked() {
+                            self.movement = Movement::Flying {
+                                position: Vec3::ZERO,
+                                look_h: 0.0,
+                                look_v: 0.0,
+                            };
+                        }
+                    })
                 });
             });
 
@@ -209,21 +240,6 @@ impl App {
         });
 
         self.egui_mq.draw(&mut *self.ctx);
-    }
-
-    fn camera_matrix(&mut self) -> Mat4 {
-        let scale = 20.0;
-        Mat4::look_at_rh(scale * Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, Vec3::Y)
-    }
-
-    fn trackball_control(&mut self, screen_pos: (f32, f32)) {
-        let axis = Vec3::new(
-            screen_pos.1 - self.mouse_prevpos.1,
-            self.mouse_prevpos.0 - screen_pos.0,
-            0.0,
-        );
-        let axis = Mat3::from_mat4(self.camera_matrix()).inverse() * axis;
-        self.trackball_matrix = arb_rotate(axis, axis.length() / 50.0) * self.trackball_matrix;
     }
 
     fn draw_ground(&mut self, projection: Mat4, camera: Mat4) {
@@ -296,8 +312,79 @@ impl App {
     }
 }
 
+fn trackball_camera_matrix() -> Mat4 {
+    let scale = 5.0;
+    Mat4::look_at_rh(
+        scale * Vec3::new(0.0, 0.0, 5.0),
+        scale * Vec3::ZERO,
+        Vec3::Y,
+    )
+}
+
+fn trackball_control(camera_matrix: Mat4, screen_pos: (f32, f32), prev_pos: (f32, f32)) -> Mat4 {
+    let axis = Vec3::new(screen_pos.1 - prev_pos.1, prev_pos.0 - screen_pos.0, 0.0);
+    let axis = Mat3::from_mat4(camera_matrix).inverse() * axis;
+    arb_rotate(axis, axis.length() / 50.0)
+}
+
+fn flying_camera_matrix(position: Vec3, angle_x: f32, angle_y: f32) -> Mat4 {
+    Mat4::look_at_rh(
+        position,
+        position
+            + (Mat4::from_quat(
+                (Quat::from_rotation_y(angle_y) * Quat::from_rotation_x(angle_x)).normalize(),
+            ) * Vec4::Z)
+                .truncate(),
+        Vec3::Y,
+    )
+}
+
 impl EventHandler for App {
-    fn update(&mut self) {}
+    fn update(&mut self) {
+        let t = date::now();
+        let delta = (t - self.prev_t) as f32;
+        self.prev_t = t;
+
+        match &mut self.movement {
+            Movement::Trackball { .. } => {}
+            Movement::Flying {
+                position,
+                look_h,
+                look_v,
+            } => {
+                let mut movement_vector = Vec4::ZERO;
+                if self.keys_down.get(&KeyCode::W).copied().unwrap_or(false) {
+                    // forward
+                    movement_vector += Vec4::Z;
+                }
+                if self.keys_down.get(&KeyCode::S).copied().unwrap_or(false) {
+                    // backward
+                    movement_vector += -Vec4::Z;
+                }
+                if self.keys_down.get(&KeyCode::A).copied().unwrap_or(false) {
+                    // left
+                    movement_vector += Vec4::X;
+                }
+                if self.keys_down.get(&KeyCode::D).copied().unwrap_or(false) {
+                    // right
+                    movement_vector += -Vec4::X;
+                }
+                if self.keys_down.get(&KeyCode::R).copied().unwrap_or(false) {
+                    movement_vector += Vec4::Y;
+                }
+                if self.keys_down.get(&KeyCode::F).copied().unwrap_or(false) {
+                    movement_vector += -Vec4::Y;
+                }
+                if movement_vector.length_squared() != 0.0 {
+                    let rot_mat = Mat4::from_quat(
+                        (Quat::from_rotation_y(*look_h) * Quat::from_rotation_x(*look_v))
+                            .normalize(),
+                    );
+                    *position += (rot_mat * movement_vector.normalize()).truncate() * delta;
+                }
+            }
+        }
+    }
 
     fn resize_event(&mut self, width: f32, height: f32) {
         self.aspect_ratio = width / height;
@@ -307,10 +394,6 @@ impl EventHandler for App {
     fn draw(&mut self) {
         let draw_start = Instant::now();
 
-        let t = date::now();
-        let _delta = (t - self.prev_t) as f32;
-        self.prev_t = t;
-
         self.ctx
             .begin_default_pass(PassAction::clear_color(0.1, 0.1, 0.1, 1.0));
         // Beware the pipeline
@@ -318,7 +401,17 @@ impl EventHandler for App {
 
         let projection =
             Mat4::perspective_rh_gl(self.fov_y_radians, self.aspect_ratio, 0.1, 1000.0);
-        let camera = self.camera_matrix() * self.trackball_matrix;
+        let camera = match self.movement {
+            Movement::Trackball {
+                down_pos: _,
+                matrix: trackball_rotation_matrix,
+            } => trackball_camera_matrix() * trackball_rotation_matrix,
+            Movement::Flying {
+                position,
+                look_h,
+                look_v,
+            } => flying_camera_matrix(position, look_v, look_h),
+        };
 
         self.ctx.apply_bindings(&self.cube.0);
         // self.draw_ground(projection, camera);
@@ -334,18 +427,34 @@ impl EventHandler for App {
 
         let draw_end = Instant::now();
         self.frame_times
-            .push(draw_end.duration_since(draw_start).as_secs_f32() * 1000.0)
+            .push(draw_end.duration_since(draw_start).as_secs_f32() * 1000.0);
     }
 
     fn mouse_motion_event(&mut self, x: f32, y: f32) {
         #[cfg(feature = "egui")]
         self.egui_mq.mouse_motion_event(x, y);
 
-        if self.mouse_left_down {
-            self.trackball_control((x, y));
+        match &mut self.movement {
+            Movement::Trackball {
+                down_pos: _,
+                matrix,
+            } => {
+                if self.mouse_left_down {
+                    *matrix =
+                        trackball_control(trackball_camera_matrix(), (x, y), self.mouse_prev_pos)
+                            * *matrix;
+                }
+            }
+            Movement::Flying {
+                position: _,
+                look_h,
+                look_v,
+            } => {
+                *look_h += (self.mouse_prev_pos.0 - x) / 100.0;
+                *look_v -= (self.mouse_prev_pos.1 - y) / 100.0;
+            }
         }
-
-        self.mouse_prevpos = (x, y);
+        self.mouse_prev_pos = (x, y);
     }
 
     fn mouse_wheel_event(&mut self, dx: f32, dy: f32) {
@@ -357,8 +466,15 @@ impl EventHandler for App {
         #[cfg(feature = "egui")]
         self.egui_mq.mouse_button_down_event(mb, x, y);
 
-        self.mouse_downpos = (x, y);
-        self.mouse_prevpos = (x, y);
+        match &mut self.movement {
+            Movement::Trackball {
+                down_pos,
+                matrix: _,
+            } => {
+                *down_pos = (x, y);
+            }
+            Movement::Flying { .. } => {}
+        }
         match mb {
             miniquad::MouseButton::Left => self.mouse_left_down = true,
             miniquad::MouseButton::Right => self.mouse_right_down = true,
@@ -390,11 +506,15 @@ impl EventHandler for App {
     ) {
         #[cfg(feature = "egui")]
         self.egui_mq.key_down_event(keycode, keymods);
+
+        self.keys_down.insert(keycode, true);
     }
 
     fn key_up_event(&mut self, keycode: miniquad::KeyCode, keymods: miniquad::KeyMods) {
         #[cfg(feature = "egui")]
         self.egui_mq.key_up_event(keycode, keymods);
+
+        self.keys_down.insert(keycode, false);
     }
 }
 
