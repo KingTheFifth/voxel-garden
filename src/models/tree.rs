@@ -1,10 +1,8 @@
 use glam::{Quat, Vec3};
 
-use crate::{
-    models::primitives::{circle, sphere},
-    utils::{BROWN, GREEN},
-    Model, Point, Voxel,
-};
+use crate::models::primitives::{circle, sphere};
+use crate::utils::{BROWN, GREEN};
+use crate::{InstanceData, Model, Point};
 
 pub fn tree(_seed: u64) -> Vec<Model> {
     let mut trunk = vec![];
@@ -12,8 +10,8 @@ pub fn tree(_seed: u64) -> Vec<Model> {
         trunk.extend(
             circle(Point::new(0, y, 0), 2.0)
                 .into_iter()
-                .map(|position| Voxel {
-                    position,
+                .map(|Point { x, y, z }| InstanceData {
+                    position: Vec3::new(x as f32, y as f32, z as f32),
                     color: BROWN,
                 }),
         );
@@ -27,8 +25,8 @@ pub fn tree(_seed: u64) -> Vec<Model> {
     let shrub = Model {
         points: sphere(Point::new(0, 40, 0), 10.0)
             .into_iter()
-            .map(|position| Voxel {
-                position,
+            .map(|Point { x, y, z }| InstanceData {
+                position: Vec3::new(x as f32, y as f32, z as f32),
                 color: GREEN,
             })
             .collect(),
