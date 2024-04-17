@@ -112,6 +112,12 @@ impl App {
             BufferUsage::Immutable,
             BufferSource::slice(&vertices),
         );
+
+        // Flat shading uses the attributes of the last vertex of a triangle 
+        // for every fragment in it
+        // By making sure that both triangles for a side of a voxel shares the 
+        // same last vertex, the entire side gets the same attributes such as 
+        // surface normal
         #[rustfmt::skip]
         let indices = [
             // Back
