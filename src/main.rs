@@ -244,7 +244,7 @@ impl App {
 }
 
 fn trackball_camera_matrix() -> Mat4 {
-    let scale = 5.0;
+    let scale = 50.0;
     Mat4::look_at_rh(
         scale * Vec3::new(0.0, 0.0, 5.0),
         scale * Vec3::ZERO,
