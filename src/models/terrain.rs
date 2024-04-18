@@ -1,20 +1,45 @@
-use crate::InstanceData;
-use glam::{Vec3, Vec4};
+use crate::{InstanceData, Point};
+use glam::{IVec3, Vec3, Vec4};
 use noise::{NoiseFn, Perlin};
 use rand::prelude::*;
+
+#[derive(Copy, Clone)]
+pub struct TerrainConfig {
+    pub sample_rate: f32,
+    pub width: i32,
+    pub height: i32,
+    pub depth: i32,
+    pub max_height: f32,
+}
+
+pub struct GenerationPositions {
+    pub ground: Vec<InstanceData>,
+    pub spawn_points: Vec<Point>,
+}
+
+impl GenerationPositions {
+    fn new(ground: Vec<InstanceData>, spawn_points: Vec<Point>) -> GenerationPositions {
+        GenerationPositions {
+            ground,
+            spawn_points,
+        }
+    }
+}
 
 pub fn generate_terrain(
     pos_x: i32,
     pos_z: i32,
-    width: i32,
-    height: i32,
-    depth: i32,
-    sample_rate: f32,
-    max_height: f32,
     perlin: Perlin,
-) -> Vec<InstanceData> {
-    let mut instance_data = Vec::new();
+    config: TerrainConfig,
+) -> GenerationPositions {
     let mut rng = rand::thread_rng();
+    let mut instance_data = Vec::new();
+    let mut spawn_points: Vec<Point> = Vec::new();
+    let depth = config.depth;
+    let width = config.width;
+    let height = config.height;
+    let sample_rate = config.sample_rate;
+    let max_height = config.max_height;
 
     for z in pos_z..depth {
         for y in 0..height {
@@ -25,29 +50,24 @@ pub fn generate_terrain(
                 let current_height = sample * max_height;
 
                 if y == current_height as i32 {
-                    let rand: f64 = rng.gen();
-                    // Flower
-                    if rand < 0.1 {
-                        ...
-                    } 
-
-                    // Tree
-                    else if rand < 0.2 {
-
-                    }
-
-                    // Ground
-                    else {
-
-                    }
+                    // Generate instance data for ground voxels
                     let color = Vec4::new(0.1, 0.5, 0.2, 1.0);
                     let position =
                         Vec3::new((pos_x + x) as f32, current_height, (pos_z + z) as f32);
                     instance_data.push(InstanceData::new(position, color));
+
+                    let rand: f64 = rng.gen();
+                    // Flower
+                    if rand < 0.05 {
+                        spawn_points.push(IVec3::new(
+                            position.x as i32,
+                            position.y as i32,
+                            position.z as i32,
+                        ));
+                    }
                 }
             }
         }
     }
-
-    return instance_data;
+    GenerationPositions::new(instance_data, spawn_points)
 }

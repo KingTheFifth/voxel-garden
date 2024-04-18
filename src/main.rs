@@ -8,11 +8,11 @@ use miniquad::{
     CullFace, EventHandler, KeyCode, PassAction, Pipeline, PipelineParams, RenderingBackend,
     ShaderSource, UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
-use models::flower::flower;
-use models::terrain::generate_terrain;
+use models::terrain::{generate_terrain, TerrainConfig};
+use models::{flower::flower, terrain::GenerationPositions};
 use noise::Perlin;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
-use utils::arb_rotate;
+use utils::{arb_rotate, RED};
 
 mod models;
 mod utils;
@@ -35,7 +35,8 @@ struct App {
     frame_times: AllocRingBuffer<f32>,
     rotation_speed: f64,
 
-    ground: Vec<InstanceData>,
+    terrain_config: TerrainConfig,
+    terrain: GenerationPositions,
 
     flowers: Vec<Object>,
     cube: (Bindings, i32),
@@ -171,6 +172,14 @@ impl App {
         );
         // let voxels = bresenham(Voxel::ZERO, Voxel::new(10, 5, 3));
 
+        let terrain_config = TerrainConfig {
+            sample_rate: 0.04,
+            width: 20,
+            height: 20,
+            depth: 20,
+            max_height: 40.,
+        };
+
         let mut app = Self {
             #[cfg(feature = "egui")]
             egui_mq: egui_miniquad::EguiMq::new(&mut *ctx),
@@ -181,7 +190,8 @@ impl App {
             prev_t: 0.0,
             frame_times: AllocRingBuffer::new(10),
             rotation_speed: 1.0,
-            ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, Perlin::new(555)),
+            terrain_config,
+            terrain: generate_terrain(-50, -50, Perlin::new(555), terrain_config),
             cube: (bindings, indices.len() as i32),
             flowers: vec![flower(0)],
             keys_down: HashMap::new(),
@@ -231,6 +241,14 @@ impl App {
                 ui.add(
                     egui::Slider::new(&mut self.rotation_speed, (0.1)..=10.0).clamp_to_range(true),
                 );
+                ui.add(
+                    egui::Slider::new(&mut self.terrain_config.sample_rate, (0.001)..=0.5)
+                        .clamp_to_range(true)
+                        .logarithmic(true),
+                );
+                if ui.button("Regenerate Terrain").clicked() {
+                    self.terrain = generate_terrain(-50, -50, Perlin::new(555), self.terrain_config)
+                }
 
                 ui.label(format!(
                     "Average frame time: {:.2} ms",
@@ -355,14 +373,32 @@ impl EventHandler for App {
         // Draw ground
         self.ctx.buffer_update(
             self.cube.0.vertex_buffers[1],
-            BufferSource::slice(&self.ground),
+            BufferSource::slice(&self.terrain.ground),
         );
         self.ctx
             .apply_uniforms(UniformsSource::table(&shader::Uniforms {
                 proj_matrix,
                 model_matrix: camera,
             }));
-        self.ctx.draw(0, self.cube.1, self.ground.len() as i32);
+        self.ctx
+            .draw(0, self.cube.1, self.terrain.ground.len() as i32);
+
+        // Draw spawn point
+        let mut spawn_points: Vec<InstanceData> = Vec::new();
+        for spawn_point in &self.terrain.spawn_points {
+            let position = Vec3::new(
+                spawn_point.x as f32,
+                spawn_point.y as f32,
+                spawn_point.z as f32,
+            );
+            let voxel = InstanceData::new(position, RED);
+            spawn_points.push(voxel);
+        }
+        self.ctx.buffer_update(
+            self.cube.0.vertex_buffers[1],
+            BufferSource::slice(&spawn_points),
+        );
+        self.ctx.draw(0, self.cube.1, spawn_points.len() as i32);
 
         // Draw objects
         let objects = self.flowers.iter();
