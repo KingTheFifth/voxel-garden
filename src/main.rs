@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::mem::size_of;
-use std::sync::atomic;
 
 use glam::{IVec3, Mat4, Quat, Vec3, Vec4};
 use miniquad::{
@@ -12,10 +11,7 @@ use noise::Perlin;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
 use crate::camera::{trackball_control, Movement};
-use crate::models::terrain::generate_terrain;
-use crate::models::tree::tree;
-
-static NEXT_ID: atomic::AtomicU64 = atomic::AtomicU64::new(0);
+use crate::models::{generate_terrain, tree, Model, Object};
 
 mod camera;
 mod models;
@@ -55,33 +51,6 @@ struct App {
 struct Voxel {
     position: Point,
     color: Color,
-}
-
-#[derive(Clone)]
-struct Object {
-    // objects having unique IDs could be useful for debugging at a later stage
-    _id: String,
-    models: Vec<Model>,
-}
-
-impl Object {
-    fn new(kind: &str, models: Vec<Model>) -> Self {
-        Self {
-            _id: format!(
-                "{}-{}",
-                NEXT_ID.fetch_add(1, atomic::Ordering::SeqCst),
-                kind
-            ),
-            models,
-        }
-    }
-}
-
-#[derive(Clone)]
-struct Model {
-    points: Vec<InstanceData>,
-    rotation: Quat,
-    translation: Vec3,
 }
 
 #[repr(C)]
