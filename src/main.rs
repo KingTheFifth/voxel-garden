@@ -42,6 +42,9 @@ struct App {
     objects: Vec<Object>,
     voxels: Vec<Voxel>,
 
+    sun_direction: Vec3,
+    sun_color: Vec3,
+
     keys_down: HashMap<KeyCode, bool>,
     mouse_left_down: bool,
     mouse_right_down: bool,
@@ -95,6 +98,12 @@ struct Model {
 }
 
 #[repr(C)]
+struct VertexData {
+    position: Vec3,
+    normal: Vec3,
+}
+
+#[repr(C)]
 #[derive(Clone, Copy)]
 struct InstanceData {
     position: Vec3,
@@ -124,36 +133,44 @@ impl App {
         let d = 0.5;
         #[rustfmt::skip]
         let vertices = [
-            Vec3::new(-d, -d, -d),
-            Vec3::new( d, -d, -d),
-            Vec3::new(-d,  d, -d),
-            Vec3::new( d,  d, -d),
-            Vec3::new(-d, -d,  d),
-            Vec3::new( d, -d,  d),
-            Vec3::new(-d,  d,  d),
-            Vec3::new( d,  d,  d),
+            VertexData { position: Vec3::new(-d, -d, -d), normal: Vec3::new( -d, 0.0, 0.0).normalize() },
+            VertexData { position: Vec3::new( d, -d, -d), normal: Vec3::new(  0.0, 0.0, -d).normalize() },
+            VertexData { position: Vec3::new(-d,  d, -d), normal: Vec3::new( -d,  d, -d).normalize() },
+            VertexData { position: Vec3::new( d,  d, -d), normal: Vec3::new(  d,  d, -d).normalize() },
+            VertexData { position: Vec3::new(-d, -d,  d), normal: Vec3::new( 0.0, -d,  0.0).normalize() },
+            VertexData { position: Vec3::new( d, -d,  d), normal: Vec3::new(  d, 0.0,  0.0).normalize() },
+            VertexData { position: Vec3::new(-d,  d,  d), normal: Vec3::new( 0.0,  d,  0.0).normalize() },
+            VertexData { position: Vec3::new( d,  d,  d), normal: Vec3::new(  0.0,  0.0,  d).normalize() },
         ];
+
         let geometry_vertex_buffer = ctx.new_buffer(
             BufferType::VertexBuffer,
             BufferUsage::Immutable,
             BufferSource::slice(&vertices),
         );
+
+        // Flat shading uses the attributes of the last vertex of a triangle 
+        // for every fragment in it
+        // By making sure that both triangles for a side of a voxel shares the 
+        // same last vertex, the entire side gets the same attributes such as 
+        // surface normal
         #[rustfmt::skip]
         let indices = [
             // Back
-            0, 2, 1,   1, 2, 3,
+            0, 2, 1,   2, 3, 1,
             // Front
-            4, 5, 7,   4, 7, 6,
+            4, 5, 7,   6, 4, 7,
             // Right
-            1, 3, 5,   5, 3, 7,
+            1, 3, 5,   3, 7, 5,
             // Left
-            4, 6, 0,   0, 6, 2,
+            4, 6, 0,   6, 2, 0,
             // Top
-            7, 3, 6,   6, 3, 2,
+            7, 3, 6,   3, 2, 6,
             // Bottom
-            5, 4, 1,   4, 0, 1,
+            1, 5, 4,   0, 1, 4,
 
         ];
+
         let index_buffer = ctx.new_buffer(
             BufferType::IndexBuffer,
             BufferUsage::Immutable,
@@ -182,7 +199,8 @@ impl App {
             ],
             &[
                 VertexAttribute::with_buffer("in_position", VertexFormat::Float3, 0),
-                VertexAttribute::with_buffer("in_inst_position", VertexFormat::Float3, 1),
+                VertexAttribute::with_buffer("in_normal", VertexFormat::Float3, 0),
+                VertexAttribute::with_buffer("in_inst_position", VertexFormat::Float3, 1), // TODO: VertexFormat::Int32?
                 VertexAttribute::with_buffer("in_inst_color", VertexFormat::Float4, 1),
             ],
             shader,
@@ -206,6 +224,8 @@ impl App {
             view_fps_graph: false,
             ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, Perlin::new(555)),
             cube: (bindings, indices.len() as i32),
+            sun_direction: Vec3::new(0.0, 1.0, 0.0),
+            sun_color: Vec3::new(0.99, 0.72, 0.075),
             objects: vec![Object::new("tree", tree(0))],
             voxels: vec![],
             keys_down: HashMap::new(),
@@ -290,6 +310,9 @@ impl App {
             .apply_uniforms(UniformsSource::table(&shader::Uniforms {
                 proj_matrix: projection,
                 model_matrix: camera,
+                camera_matrix: camera,
+                sun_direction: self.sun_direction,
+                sun_color: self.sun_color,
             }));
         self.ctx.draw(0, self.cube.1, self.ground.len() as i32);
     }
@@ -305,6 +328,9 @@ impl App {
                     proj_matrix: projection,
                     model_matrix: camera
                         * Mat4::from_rotation_translation(model.rotation, model.translation),
+                    camera_matrix: camera,
+                    sun_direction: self.sun_direction,
+                    sun_color: self.sun_color,
                 }));
             self.ctx.draw(0, self.cube.1, model.points.len() as i32);
         }
@@ -331,6 +357,9 @@ impl App {
             .apply_uniforms(UniformsSource::table(&shader::Uniforms {
                 proj_matrix: projection,
                 model_matrix: camera,
+                camera_matrix: camera,
+                sun_color: self.sun_color,
+                sun_direction: self.sun_direction,
             }));
         self.ctx.draw(0, self.cube.1, data.len() as i32);
     }
@@ -553,6 +582,7 @@ fn main() {
 
 mod shader {
     use glam::Mat4;
+    use glam::Vec3;
     use miniquad::ShaderMeta;
     use miniquad::UniformBlockLayout;
     use miniquad::UniformDesc;
@@ -568,6 +598,9 @@ mod shader {
                 uniforms: vec![
                     UniformDesc::new("proj_matrix", UniformType::Mat4),
                     UniformDesc::new("model_matrix", UniformType::Mat4),
+                    UniformDesc::new("camera_matrix", UniformType::Mat4),
+                    UniformDesc::new("sun_direction", UniformType::Float3),
+                    UniformDesc::new("sun_color", UniformType::Float3),
                 ],
             },
         }
@@ -577,5 +610,8 @@ mod shader {
     pub struct Uniforms {
         pub proj_matrix: Mat4,
         pub model_matrix: Mat4,
+        pub camera_matrix: Mat4,
+        pub sun_direction: Vec3,
+        pub sun_color: Vec3,
     }
 }
