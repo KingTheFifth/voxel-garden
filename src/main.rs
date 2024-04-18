@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::mem::size_of;
+use std::sync::atomic;
 
 use glam::{IVec3, Mat3, Mat4, Quat, Vec3, Vec4};
 use miniquad::{
@@ -13,12 +14,13 @@ use noise::Perlin;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use utils::arb_rotate;
 
+static NEXT_ID: atomic::AtomicU64 = atomic::AtomicU64::new(0);
+
 mod models;
 mod utils;
 
 type Point = IVec3;
 type Color = Vec4;
-type Object = Vec<Model>;
 
 const MAX_INSTANCE_DATA: usize = size_of::<InstanceData>() * 100_000;
 
@@ -66,13 +68,34 @@ struct Voxel {
 }
 
 #[derive(Clone)]
+struct Object {
+    // objects having unique IDs could be useful for debugging at a later stage
+    _id: String,
+    models: Vec<Model>,
+}
+
+impl Object {
+    fn new(kind: &str, models: Vec<Model>) -> Self {
+        Self {
+            _id: format!(
+                "{}-{}",
+                NEXT_ID.fetch_add(1, atomic::Ordering::SeqCst),
+                kind
+            ),
+            models,
+        }
+    }
+}
+
+#[derive(Clone)]
 struct Model {
-    points: Vec<Voxel>,
+    points: Vec<InstanceData>,
     rotation: Quat,
     translation: Vec3,
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
 struct InstanceData {
     position: Vec3,
     color: Vec4,
@@ -183,7 +206,7 @@ impl App {
             view_fps_graph: false,
             ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, Perlin::new(555)),
             cube: (bindings, indices.len() as i32),
-            objects: vec![tree(0)],
+            objects: vec![Object::new("tree", tree(0))],
             voxels: vec![],
             keys_down: HashMap::new(),
             mouse_left_down: false,
@@ -272,25 +295,10 @@ impl App {
     }
 
     fn draw_objects(&mut self, projection: Mat4, camera: Mat4) {
-        let objects = self.objects.iter();
-        for model in objects.flatten() {
-            let instance_data: Vec<_> = model
-                .points
-                .iter()
-                .copied()
-                .map(
-                    |Voxel {
-                         position: Point { x, y, z },
-                         color,
-                     }| InstanceData {
-                        position: Vec3::new(x as f32, y as f32, z as f32),
-                        color,
-                    },
-                )
-                .collect();
+        for model in self.objects.iter().flat_map(|obj| &obj.models) {
             self.ctx.buffer_update(
                 self.cube.0.vertex_buffers[1],
-                BufferSource::slice(&instance_data),
+                BufferSource::slice(&model.points),
             );
             self.ctx
                 .apply_uniforms(UniformsSource::table(&shader::Uniforms {
@@ -435,7 +443,7 @@ impl EventHandler for App {
         self.ctx.apply_bindings(&self.cube.0);
         // self.draw_ground(projection, camera);
         self.draw_objects(projection, camera);
-        // self.draw_voxels(projection, camera);
+        self.draw_voxels(projection, camera);
 
         self.ctx.end_render_pass();
 
