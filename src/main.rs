@@ -7,8 +7,8 @@ use miniquad::{
     CullFace, EventHandler, KeyCode, PassAction, Pipeline, PipelineParams, RenderingBackend,
     ShaderSource, UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
-use models::flower::flower;
 use models::terrain::generate_terrain;
+use models::tree::tree;
 use noise::Perlin;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use utils::arb_rotate;
@@ -37,7 +37,8 @@ struct App {
     view_fps_graph: bool,
 
     ground: Vec<InstanceData>,
-    flowers: Vec<Object>,
+    objects: Vec<Object>,
+    voxels: Vec<Voxel>,
 
     keys_down: HashMap<KeyCode, bool>,
     mouse_left_down: bool,
@@ -169,8 +170,6 @@ impl App {
                 ..Default::default()
             },
         );
-        // let voxels = bresenham(Voxel::ZERO, Voxel::new(10, 5, 3));
-
         let mut app = Self {
             #[cfg(feature = "egui")]
             egui_mq: egui_miniquad::EguiMq::new(&mut *ctx),
@@ -184,7 +183,8 @@ impl App {
             view_fps_graph: false,
             ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, Perlin::new(555)),
             cube: (bindings, indices.len() as i32),
-            flowers: vec![flower(0)],
+            objects: vec![tree(0)],
+            voxels: vec![],
             keys_down: HashMap::new(),
             mouse_left_down: false,
             mouse_right_down: false,
@@ -256,6 +256,75 @@ impl App {
         });
 
         self.egui_mq.draw(&mut *self.ctx);
+    }
+
+    fn draw_ground(&mut self, projection: Mat4, camera: Mat4) {
+        self.ctx.buffer_update(
+            self.cube.0.vertex_buffers[1],
+            BufferSource::slice(&self.ground),
+        );
+        self.ctx
+            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                proj_matrix: projection,
+                model_matrix: camera,
+            }));
+        self.ctx.draw(0, self.cube.1, self.ground.len() as i32);
+    }
+
+    fn draw_objects(&mut self, projection: Mat4, camera: Mat4) {
+        let objects = self.objects.iter();
+        for model in objects.flatten() {
+            let instance_data: Vec<_> = model
+                .points
+                .iter()
+                .copied()
+                .map(
+                    |Voxel {
+                         position: Point { x, y, z },
+                         color,
+                     }| InstanceData {
+                        position: Vec3::new(x as f32, y as f32, z as f32),
+                        color,
+                    },
+                )
+                .collect();
+            self.ctx.buffer_update(
+                self.cube.0.vertex_buffers[1],
+                BufferSource::slice(&instance_data),
+            );
+            self.ctx
+                .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                    proj_matrix: projection,
+                    model_matrix: camera
+                        * Mat4::from_rotation_translation(model.rotation, model.translation),
+                }));
+            self.ctx.draw(0, self.cube.1, model.points.len() as i32);
+        }
+    }
+
+    fn draw_voxels(&mut self, projection: Mat4, camera: Mat4) {
+        let data: Vec<_> = self
+            .voxels
+            .iter()
+            .copied()
+            .map(
+                |Voxel {
+                     position: Point { x, y, z },
+                     color,
+                 }| InstanceData {
+                    position: Vec3::new(x as f32, y as f32, z as f32),
+                    color,
+                },
+            )
+            .collect();
+        self.ctx
+            .buffer_update(self.cube.0.vertex_buffers[1], BufferSource::slice(&data));
+        self.ctx
+            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                proj_matrix: projection,
+                model_matrix: camera,
+            }));
+        self.ctx.draw(0, self.cube.1, data.len() as i32);
     }
 }
 
@@ -349,7 +418,7 @@ impl EventHandler for App {
         // Beware the pipeline
         self.ctx.apply_pipeline(&self.pipeline);
 
-        let proj_matrix =
+        let projection =
             Mat4::perspective_rh_gl(self.fov_y_radians, self.aspect_ratio, 0.1, 1000.0);
         let camera = match self.movement {
             Movement::Trackball {
@@ -364,54 +433,9 @@ impl EventHandler for App {
         };
 
         self.ctx.apply_bindings(&self.cube.0);
-        self.ctx
-            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                proj_matrix,
-                model_matrix: camera,
-            }));
-        self.ctx.apply_bindings(&self.cube.0);
-
-        // Draw ground
-        self.ctx.buffer_update(
-            self.cube.0.vertex_buffers[1],
-            BufferSource::slice(&self.ground),
-        );
-        self.ctx
-            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                proj_matrix,
-                model_matrix: camera,
-            }));
-        self.ctx.draw(0, self.cube.1, self.ground.len() as i32);
-
-        // Draw objects
-        let objects = self.flowers.iter();
-        for model in objects.flatten() {
-            let instance_data: Vec<_> = model
-                .points
-                .iter()
-                .copied()
-                .map(
-                    |Voxel {
-                         position: Point { x, y, z },
-                         color,
-                     }| InstanceData {
-                        position: Vec3::new(x as f32, y as f32, z as f32),
-                        color,
-                    },
-                )
-                .collect();
-            self.ctx.buffer_update(
-                self.cube.0.vertex_buffers[1],
-                BufferSource::slice(&instance_data),
-            );
-            self.ctx
-                .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                    proj_matrix,
-                    model_matrix: camera
-                        * Mat4::from_rotation_translation(model.rotation, model.translation),
-                }));
-            self.ctx.draw(0, self.cube.1, model.points.len() as i32);
-        }
+        // self.draw_ground(projection, camera);
+        self.draw_objects(projection, camera);
+        // self.draw_voxels(projection, camera);
 
         self.ctx.end_render_pass();
 
