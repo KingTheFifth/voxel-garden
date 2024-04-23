@@ -66,6 +66,12 @@ enum Movement {
         look_h: f32,
         look_v: f32,
     },
+    OnGround {
+        position: Vec3,
+        velocity: Vec3,
+        look_h: f32,
+        look_v: f32,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -223,6 +229,7 @@ impl App {
             height: 20,
             depth: 200,
             max_height: 20.,
+            noise: Perlin::new(555),
         };
 
         let mut app = Self {
@@ -233,8 +240,8 @@ impl App {
             fov_y_radians: 1.0,
             pipeline,
             frame_times: AllocRingBuffer::new(10),
+            terrain: generate_terrain(&terrain_config),
             terrain_config,
-            terrain: generate_terrain(-100, -100, Perlin::new(555), terrain_config),
             prev_update: 0.0,
             prev_draw: 0.0,
             fps_history: AllocRingBuffer::new(256),
@@ -248,8 +255,9 @@ impl App {
             mouse_left_down: false,
             mouse_right_down: false,
             mouse_prev_pos: (0.0, 0.0),
-            movement: Movement::Flying {
+            movement: Movement::OnGround {
                 position: Vec3::ZERO,
+                velocity: Vec3::ZERO,
                 look_h: 0.0,
                 look_v: 0.0,
             },
@@ -298,8 +306,7 @@ impl App {
                         .logarithmic(true),
                 );
                 if ui.button("Regenerate Terrain").clicked() {
-                    self.terrain =
-                        generate_terrain(-100, -100, Perlin::new(555), self.terrain_config)
+                    self.terrain = generate_terrain(&self.terrain_config)
                 }
 
                 ui.label(format!(
@@ -486,6 +493,52 @@ impl EventHandler for App {
                     *position += (rot_mat * movement_vector.normalize()).truncate() * delta * 10.;
                 }
             }
+            Movement::OnGround {
+                position,
+                velocity,
+                look_h,
+                look_v: _,
+            } => {
+                let mut movement_vector = Vec4::ZERO;
+                if self.keys_down.get(&KeyCode::W).copied().unwrap_or(false) {
+                    movement_vector += Vec4::Z;
+                }
+                if self.keys_down.get(&KeyCode::S).copied().unwrap_or(false) {
+                    movement_vector += -Vec4::Z;
+                }
+                if self.keys_down.get(&KeyCode::A).copied().unwrap_or(false) {
+                    movement_vector += Vec4::X;
+                }
+                if self.keys_down.get(&KeyCode::D).copied().unwrap_or(false) {
+                    movement_vector += -Vec4::X;
+                }
+                if movement_vector.length_squared() != 0.0 {
+                    let rot_mat = Mat4::from_quat(Quat::from_rotation_y(*look_h).normalize());
+                    *position += (rot_mat * movement_vector.normalize()).truncate() * delta * 10.0;
+                }
+
+                let height_at_p = self.terrain_config.sample(position.x, position.z) + 2.0;
+
+                let mut on_ground = position.y <= height_at_p;
+                if on_ground
+                    && self
+                        .keys_down
+                        .get(&KeyCode::Space)
+                        .copied()
+                        .unwrap_or(false)
+                {
+                    velocity.y = 5.0;
+                    on_ground = false;
+                }
+
+                if on_ground {
+                    *velocity = Vec3::ZERO;
+                    position.y = height_at_p;
+                } else {
+                    velocity.y -= 20.0 * delta; // gravity
+                    *position += delta * *velocity;
+                }
+            }
         }
     }
 
@@ -514,6 +567,12 @@ impl EventHandler for App {
             } => trackball_camera_matrix() * trackball_rotation_matrix,
             Movement::Flying {
                 position,
+                look_h,
+                look_v,
+            }
+            | Movement::OnGround {
+                position,
+                velocity: _,
                 look_h,
                 look_v,
             } => flying_camera_matrix(position, look_v, look_h),
@@ -552,6 +611,12 @@ impl EventHandler for App {
                 position: _,
                 look_h,
                 look_v,
+            }
+            | Movement::OnGround {
+                position: _,
+                velocity: _,
+                look_h,
+                look_v,
             } => {
                 *look_h += (self.mouse_prev_pos.0 - x) / 100.0;
                 *look_v -= (self.mouse_prev_pos.1 - y) / 100.0;
@@ -577,6 +642,7 @@ impl EventHandler for App {
                 *down_pos = (x, y);
             }
             Movement::Flying { .. } => {}
+            Movement::OnGround { .. } => {}
         }
         match mb {
             miniquad::MouseButton::Left => self.mouse_left_down = true,
