@@ -11,7 +11,7 @@ use miniquad::{
 use models::terrain::GenerationPositions;
 use models::terrain::{generate_terrain, TerrainConfig};
 use models::tree::tree;
-use noise::{NoiseFn as _, Perlin};
+use noise::Perlin;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use utils::arb_rotate;
 
@@ -517,11 +517,7 @@ impl EventHandler for App {
                     *position += (rot_mat * movement_vector.normalize()).truncate() * delta * 10.0;
                 }
 
-                let px = position.x * self.terrain_config.sample_rate;
-                let pz = position.z * self.terrain_config.sample_rate;
-                let sample =
-                    (self.terrain_config.noise.get([px as f64, pz as f64]) as f32 + 1.0) / 2.0;
-                let height_at_p = (self.terrain_config.max_height * sample) + 2.0;
+                let height_at_p = self.terrain_config.sample(position.x, position.z) + 2.0;
 
                 let mut on_ground = position.y <= height_at_p;
                 if on_ground

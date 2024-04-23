@@ -14,6 +14,15 @@ pub struct TerrainConfig {
     pub noise: Perlin,
 }
 
+impl TerrainConfig {
+    pub fn sample(&self, x: f32, z: f32) -> f32 {
+        let px = x * self.sample_rate;
+        let pz = z * self.sample_rate;
+        let sample = (self.noise.get([px as f64, pz as f64]) as f32 + 1.0) / 2.0;
+        (self.max_height * sample) + 2.0
+    }
+}
+
 pub struct GenerationPositions {
     pub ground: Vec<InstanceData>,
     pub spawn_points: Vec<InstanceData>,
@@ -34,18 +43,10 @@ pub fn generate_terrain(config: &TerrainConfig) -> GenerationPositions {
     let mut spawn_points: Vec<InstanceData> = Vec::new();
     let depth = config.depth;
     let width = config.width;
-    let sample_rate = config.sample_rate;
-    let max_height = config.max_height;
 
     for z in 0..depth {
         for x in 0..width {
-            let sample_x: f32 = x as f32 * sample_rate;
-            let sample_z: f32 = z as f32 * sample_rate;
-
-            // Change [-1, 1] to [0, 1]
-            let sample: f32 =
-                (config.noise.get([sample_x as f64, sample_z as f64]) as f32 + 1.) / 2.;
-            let current_height = (sample * max_height).trunc();
+            let current_height = config.sample(x as f32, z as f32);
 
             // Generate instance data for ground voxels
             let color = Vec4::new(0.1, 0.5, 0.2, 1.0);
