@@ -4,13 +4,14 @@ use glam::{Vec3, Vec4};
 use noise::{NoiseFn, Perlin};
 use rand::prelude::*;
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub struct TerrainConfig {
     pub sample_rate: f32,
     pub width: i32,
     pub height: i32,
     pub depth: i32,
     pub max_height: f32,
+    pub noise: Perlin,
 }
 
 pub struct GenerationPositions {
@@ -27,12 +28,7 @@ impl GenerationPositions {
     }
 }
 
-pub fn generate_terrain(
-    pos_x: i32,
-    pos_z: i32,
-    perlin: Perlin,
-    config: TerrainConfig,
-) -> GenerationPositions {
+pub fn generate_terrain(config: &TerrainConfig) -> GenerationPositions {
     let mut rng = rand::thread_rng();
     let mut instance_data = Vec::new();
     let mut spawn_points: Vec<InstanceData> = Vec::new();
@@ -41,13 +37,14 @@ pub fn generate_terrain(
     let sample_rate = config.sample_rate;
     let max_height = config.max_height;
 
-    for z in pos_z..(depth + pos_z) {
-        for x in pos_x..(width + pos_x) {
+    for z in 0..depth {
+        for x in 0..width {
             let sample_x: f32 = x as f32 * sample_rate;
             let sample_z: f32 = z as f32 * sample_rate;
 
             // Change [-1, 1] to [0, 1]
-            let sample: f32 = (perlin.get([sample_x as f64, sample_z as f64]) as f32 + 1.) / 2.;
+            let sample: f32 =
+                (config.noise.get([sample_x as f64, sample_z as f64]) as f32 + 1.) / 2.;
             let current_height = (sample * max_height).trunc();
 
             // Generate instance data for ground voxels
