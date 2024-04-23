@@ -19,7 +19,7 @@ impl TerrainConfig {
         let px = x * self.sample_rate;
         let pz = z * self.sample_rate;
         let sample = (self.noise.get([px as f64, pz as f64]) as f32 + 1.0) / 2.0;
-        (self.max_height * sample) + 2.0
+        self.max_height * sample
     }
 }
 
