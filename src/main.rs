@@ -33,7 +33,6 @@ struct App {
     prev_t: f64,
 
     frame_times: AllocRingBuffer<f32>,
-    rotation_speed: f64,
 
     terrain_config: TerrainConfig,
     terrain: GenerationPositions,
@@ -174,10 +173,10 @@ impl App {
 
         let terrain_config = TerrainConfig {
             sample_rate: 0.04,
-            width: 20,
+            width: 200,
             height: 20,
-            depth: 20,
-            max_height: 40.,
+            depth: 200,
+            max_height: 20.,
         };
 
         let mut app = Self {
@@ -189,9 +188,8 @@ impl App {
             pipeline,
             prev_t: 0.0,
             frame_times: AllocRingBuffer::new(10),
-            rotation_speed: 1.0,
             terrain_config,
-            terrain: generate_terrain(-50, -50, Perlin::new(555), terrain_config),
+            terrain: generate_terrain(-100, -100, Perlin::new(555), terrain_config),
             cube: (bindings, indices.len() as i32),
             flowers: vec![flower(0)],
             keys_down: HashMap::new(),
@@ -237,17 +235,14 @@ impl App {
             });
 
             egui::Window::new("Debug").show(egui_ctx, |ui| {
-                // temporary, to show how to change values
                 ui.add(
-                    egui::Slider::new(&mut self.rotation_speed, (0.1)..=10.0).clamp_to_range(true),
-                );
-                ui.add(
-                    egui::Slider::new(&mut self.terrain_config.sample_rate, (0.001)..=0.5)
+                    egui::Slider::new(&mut self.terrain_config.sample_rate, (0.001)..=0.04)
                         .clamp_to_range(true)
                         .logarithmic(true),
                 );
                 if ui.button("Regenerate Terrain").clicked() {
-                    self.terrain = generate_terrain(-50, -50, Perlin::new(555), self.terrain_config)
+                    self.terrain =
+                        generate_terrain(-100, -100, Perlin::new(555), self.terrain_config)
                 }
 
                 ui.label(format!(
@@ -329,7 +324,7 @@ impl EventHandler for App {
                         (Quat::from_rotation_y(*look_h) * Quat::from_rotation_x(*look_v))
                             .normalize(),
                     );
-                    *position += (rot_mat * movement_vector.normalize()).truncate() * delta;
+                    *position += (rot_mat * movement_vector.normalize()).truncate() * delta * 10.;
                 }
             }
         }
