@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::mem::size_of;
-use std::time::Instant;
+use std::sync::atomic;
 
 use glam::{IVec3, Mat3, Mat4, Quat, Vec3, Vec4};
 use miniquad::{
@@ -8,18 +8,20 @@ use miniquad::{
     CullFace, EventHandler, KeyCode, PassAction, Pipeline, PipelineParams, RenderingBackend,
     ShaderSource, UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
+use models::terrain::GenerationPositions;
 use models::terrain::{generate_terrain, TerrainConfig};
-use models::{flower::flower, terrain::GenerationPositions};
+use models::tree::tree;
 use noise::Perlin;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
-use utils::{arb_rotate, RED};
+use utils::arb_rotate;
+
+static NEXT_ID: atomic::AtomicU64 = atomic::AtomicU64::new(0);
 
 mod models;
 mod utils;
 
 type Point = IVec3;
 type Color = Vec4;
-type Object = Vec<Model>;
 
 const MAX_INSTANCE_DATA: usize = size_of::<InstanceData>() * 100_000;
 
@@ -30,15 +32,23 @@ struct App {
     #[cfg(feature = "egui")]
     egui_mq: egui_miniquad::EguiMq,
     pipeline: Pipeline,
-    prev_t: f64,
+    cube: (Bindings, i32),
 
     frame_times: AllocRingBuffer<f32>,
 
     terrain_config: TerrainConfig,
     terrain: GenerationPositions,
+    prev_update: f64,
+    prev_draw: f64,
+    fps_history: AllocRingBuffer<f32>,
+    view_fps_graph: bool,
 
-    flowers: Vec<Object>,
-    cube: (Bindings, i32),
+    objects: Vec<Object>,
+    voxels: Vec<Voxel>,
+
+    sun_direction: Vec3,
+    sun_color: Vec3,
+
     keys_down: HashMap<KeyCode, bool>,
     mouse_left_down: bool,
     mouse_right_down: bool,
@@ -65,13 +75,40 @@ struct Voxel {
 }
 
 #[derive(Clone)]
+struct Object {
+    // objects having unique IDs could be useful for debugging at a later stage
+    _id: String,
+    models: Vec<Model>,
+}
+
+impl Object {
+    fn new(kind: &str, models: Vec<Model>) -> Self {
+        Self {
+            _id: format!(
+                "{}-{}",
+                NEXT_ID.fetch_add(1, atomic::Ordering::SeqCst),
+                kind
+            ),
+            models,
+        }
+    }
+}
+
+#[derive(Clone)]
 struct Model {
-    points: Vec<Voxel>,
+    points: Vec<InstanceData>,
     rotation: Quat,
     translation: Vec3,
 }
 
 #[repr(C)]
+struct VertexData {
+    position: Vec3,
+    normal: Vec3,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
 struct InstanceData {
     position: Vec3,
     color: Vec4,
@@ -100,36 +137,44 @@ impl App {
         let d = 0.5;
         #[rustfmt::skip]
         let vertices = [
-            Vec3::new(-d, -d, -d),
-            Vec3::new( d, -d, -d),
-            Vec3::new(-d,  d, -d),
-            Vec3::new( d,  d, -d),
-            Vec3::new(-d, -d,  d),
-            Vec3::new( d, -d,  d),
-            Vec3::new(-d,  d,  d),
-            Vec3::new( d,  d,  d),
+            VertexData { position: Vec3::new(-d, -d, -d), normal: Vec3::new( -d, 0.0, 0.0).normalize() },
+            VertexData { position: Vec3::new( d, -d, -d), normal: Vec3::new(  0.0, 0.0, -d).normalize() },
+            VertexData { position: Vec3::new(-d,  d, -d), normal: Vec3::new( -d,  d, -d).normalize() },
+            VertexData { position: Vec3::new( d,  d, -d), normal: Vec3::new(  d,  d, -d).normalize() },
+            VertexData { position: Vec3::new(-d, -d,  d), normal: Vec3::new( 0.0, -d,  0.0).normalize() },
+            VertexData { position: Vec3::new( d, -d,  d), normal: Vec3::new(  d, 0.0,  0.0).normalize() },
+            VertexData { position: Vec3::new(-d,  d,  d), normal: Vec3::new( 0.0,  d,  0.0).normalize() },
+            VertexData { position: Vec3::new( d,  d,  d), normal: Vec3::new(  0.0,  0.0,  d).normalize() },
         ];
+
         let geometry_vertex_buffer = ctx.new_buffer(
             BufferType::VertexBuffer,
             BufferUsage::Immutable,
             BufferSource::slice(&vertices),
         );
+
+        // Flat shading uses the attributes of the last vertex of a triangle
+        // for every fragment in it
+        // By making sure that both triangles for a side of a voxel shares the
+        // same last vertex, the entire side gets the same attributes such as
+        // surface normal
         #[rustfmt::skip]
         let indices = [
             // Back
-            0, 2, 1,   1, 2, 3,
+            0, 2, 1,   2, 3, 1,
             // Front
-            4, 5, 7,   4, 7, 6,
+            4, 5, 7,   6, 4, 7,
             // Right
-            1, 3, 5,   5, 3, 7,
+            1, 3, 5,   3, 7, 5,
             // Left
-            4, 6, 0,   0, 6, 2,
+            4, 6, 0,   6, 2, 0,
             // Top
-            7, 3, 6,   6, 3, 2,
+            7, 3, 6,   3, 2, 6,
             // Bottom
-            5, 4, 1,   4, 0, 1,
+            1, 5, 4,   0, 1, 4,
 
         ];
+
         let index_buffer = ctx.new_buffer(
             BufferType::IndexBuffer,
             BufferUsage::Immutable,
@@ -158,7 +203,8 @@ impl App {
             ],
             &[
                 VertexAttribute::with_buffer("in_position", VertexFormat::Float3, 0),
-                VertexAttribute::with_buffer("in_inst_position", VertexFormat::Float3, 1),
+                VertexAttribute::with_buffer("in_normal", VertexFormat::Float3, 0),
+                VertexAttribute::with_buffer("in_inst_position", VertexFormat::Float3, 1), // TODO: VertexFormat::Int32?
                 VertexAttribute::with_buffer("in_inst_color", VertexFormat::Float4, 1),
             ],
             shader,
@@ -186,12 +232,18 @@ impl App {
             aspect_ratio: 1.0,
             fov_y_radians: 1.0,
             pipeline,
-            prev_t: 0.0,
             frame_times: AllocRingBuffer::new(10),
             terrain_config,
             terrain: generate_terrain(-100, -100, Perlin::new(555), terrain_config),
+            prev_update: 0.0,
+            prev_draw: 0.0,
+            fps_history: AllocRingBuffer::new(256),
+            view_fps_graph: false,
             cube: (bindings, indices.len() as i32),
-            flowers: vec![flower(0)],
+            sun_direction: Vec3::new(0.0, 1.0, 0.0),
+            sun_color: Vec3::new(0.99, 0.72, 0.075),
+            objects: vec![Object::new("tree", tree(0))],
+            voxels: vec![],
             keys_down: HashMap::new(),
             mouse_left_down: false,
             mouse_right_down: false,
@@ -208,8 +260,11 @@ impl App {
 
     #[cfg(feature = "egui")]
     fn egui_ui(&mut self) {
+        use egui::{TopBottomPanel, Window};
+        use egui_plot::{Line, Plot, PlotPoints};
+
         self.egui_mq.run(&mut *self.ctx, |_ctx, egui_ctx| {
-            egui::TopBottomPanel::top("top bar").show(egui_ctx, |ui| {
+            TopBottomPanel::top("top bar").show(egui_ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.menu_button("File", |ui| {
                         if ui.button("Quit").clicked() {
@@ -217,6 +272,8 @@ impl App {
                         }
                     });
                     ui.menu_button("View", |ui| {
+                        ui.checkbox(&mut self.view_fps_graph, "FPS graph");
+                        ui.separator();
                         if ui.button("Switch to trackball camera").clicked() {
                             self.movement = Movement::Trackball {
                                 down_pos: (0.0, 0.0),
@@ -230,7 +287,7 @@ impl App {
                                 look_v: 0.0,
                             };
                         }
-                    })
+                    });
                 });
             });
 
@@ -250,9 +307,111 @@ impl App {
                     self.frame_times.iter().sum::<f32>() / self.frame_times.len() as f32
                 ));
             });
+            Window::new("FPS")
+                .collapsible(false)
+                .open(&mut self.view_fps_graph)
+                .default_height(200.0)
+                .default_width(300.0)
+                .show(egui_ctx, |ui| {
+                    let fps_points: PlotPoints = self
+                        .fps_history
+                        .iter()
+                        .enumerate()
+                        .map(|(x, y)| [x as f64, *y as f64])
+                        .collect();
+                    Plot::new("fps plot")
+                        .include_y(0.0)
+                        .include_y(60.0)
+                        .allow_drag(false)
+                        .allow_scroll(false)
+                        .show_background(false)
+                        .show_x(false)
+                        .show(ui, |plot_ui| plot_ui.line(Line::new(fps_points)));
+                });
         });
 
         self.egui_mq.draw(&mut *self.ctx);
+    }
+
+    fn draw_ground(&mut self, projection: Mat4, camera: Mat4) {
+        self.ctx.buffer_update(
+            self.cube.0.vertex_buffers[1],
+            BufferSource::slice(&self.terrain.ground),
+        );
+        self.ctx
+            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                proj_matrix: projection,
+                model_matrix: camera,
+                camera_matrix: camera,
+                sun_direction: self.sun_direction,
+                sun_color: self.sun_color,
+            }));
+        self.ctx
+            .draw(0, self.cube.1, self.terrain.ground.len() as i32);
+    }
+
+    fn draw_spawn_points(&mut self, projection: Mat4, camera: Mat4) {
+        self.ctx.buffer_update(
+            self.cube.0.vertex_buffers[1],
+            BufferSource::slice(&self.terrain.spawn_points),
+        );
+        self.ctx
+            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                proj_matrix: projection,
+                model_matrix: camera,
+                camera_matrix: camera,
+                sun_direction: self.sun_direction,
+                sun_color: self.sun_color,
+            }));
+        self.ctx
+            .draw(0, self.cube.1, self.terrain.spawn_points.len() as i32);
+    }
+
+    fn draw_objects(&mut self, projection: Mat4, camera: Mat4) {
+        for model in self.objects.iter().flat_map(|obj| &obj.models) {
+            self.ctx.buffer_update(
+                self.cube.0.vertex_buffers[1],
+                BufferSource::slice(&model.points),
+            );
+            self.ctx
+                .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                    proj_matrix: projection,
+                    model_matrix: camera
+                        * Mat4::from_rotation_translation(model.rotation, model.translation),
+                    camera_matrix: camera,
+                    sun_direction: self.sun_direction,
+                    sun_color: self.sun_color,
+                }));
+            self.ctx.draw(0, self.cube.1, model.points.len() as i32);
+        }
+    }
+
+    fn draw_voxels(&mut self, projection: Mat4, camera: Mat4) {
+        let data: Vec<_> = self
+            .voxels
+            .iter()
+            .copied()
+            .map(
+                |Voxel {
+                     position: Point { x, y, z },
+                     color,
+                 }| InstanceData {
+                    position: Vec3::new(x as f32, y as f32, z as f32),
+                    color,
+                },
+            )
+            .collect();
+        self.ctx
+            .buffer_update(self.cube.0.vertex_buffers[1], BufferSource::slice(&data));
+        self.ctx
+            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                proj_matrix: projection,
+                model_matrix: camera,
+                camera_matrix: camera,
+                sun_color: self.sun_color,
+                sun_direction: self.sun_direction,
+            }));
+        self.ctx.draw(0, self.cube.1, data.len() as i32);
     }
 }
 
@@ -285,9 +444,9 @@ fn flying_camera_matrix(position: Vec3, angle_x: f32, angle_y: f32) -> Mat4 {
 
 impl EventHandler for App {
     fn update(&mut self) {
-        let t = date::now();
-        let delta = (t - self.prev_t) as f32;
-        self.prev_t = t;
+        let now = date::now();
+        let delta = (now - self.prev_update) as f32;
+        self.prev_update = now;
 
         match &mut self.movement {
             Movement::Trackball { .. } => {}
@@ -336,14 +495,17 @@ impl EventHandler for App {
     }
 
     fn draw(&mut self) {
-        let draw_start = Instant::now();
+        let now = date::now();
+        let draw_delta = (now - self.prev_draw) as f32;
+        self.prev_draw = now;
+        self.fps_history.push(1.0 / draw_delta);
 
         self.ctx
             .begin_default_pass(PassAction::clear_color(0.1, 0.1, 0.1, 1.0));
         // Beware the pipeline
         self.ctx.apply_pipeline(&self.pipeline);
 
-        let proj_matrix =
+        let projection =
             Mat4::perspective_rh_gl(self.fov_y_radians, self.aspect_ratio, 0.1, 1000.0);
         let camera = match self.movement {
             Movement::Trackball {
@@ -358,72 +520,10 @@ impl EventHandler for App {
         };
 
         self.ctx.apply_bindings(&self.cube.0);
-        self.ctx
-            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                proj_matrix,
-                model_matrix: camera,
-            }));
-        self.ctx.apply_bindings(&self.cube.0);
-
-        // Draw ground
-        self.ctx.buffer_update(
-            self.cube.0.vertex_buffers[1],
-            BufferSource::slice(&self.terrain.ground),
-        );
-        self.ctx
-            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                proj_matrix,
-                model_matrix: camera,
-            }));
-        self.ctx
-            .draw(0, self.cube.1, self.terrain.ground.len() as i32);
-
-        // Draw spawn point
-        let mut spawn_points: Vec<InstanceData> = Vec::new();
-        for spawn_point in &self.terrain.spawn_points {
-            let position = Vec3::new(
-                spawn_point.x as f32,
-                spawn_point.y as f32,
-                spawn_point.z as f32,
-            );
-            let voxel = InstanceData::new(position, RED);
-            spawn_points.push(voxel);
-        }
-        self.ctx.buffer_update(
-            self.cube.0.vertex_buffers[1],
-            BufferSource::slice(&spawn_points),
-        );
-        self.ctx.draw(0, self.cube.1, spawn_points.len() as i32);
-
-        // Draw objects
-        let objects = self.flowers.iter();
-        for model in objects.flatten() {
-            let instance_data: Vec<_> = model
-                .points
-                .iter()
-                .copied()
-                .map(
-                    |Voxel {
-                         position: Point { x, y, z },
-                         color,
-                     }| InstanceData {
-                        position: Vec3::new(x as f32, y as f32, z as f32),
-                        color,
-                    },
-                )
-                .collect();
-            self.ctx.buffer_update(
-                self.cube.0.vertex_buffers[1],
-                BufferSource::slice(&instance_data),
-            );
-            self.ctx
-                .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                    proj_matrix,
-                    model_matrix: camera
-                        * Mat4::from_rotation_translation(model.rotation, model.translation),
-                }));
-            self.ctx.draw(0, self.cube.1, model.points.len() as i32);
-        }
+        self.draw_ground(projection, camera);
+        self.draw_objects(projection, camera);
+        self.draw_voxels(projection, camera);
+        self.draw_spawn_points(projection, camera);
 
         self.ctx.end_render_pass();
 
@@ -431,10 +531,6 @@ impl EventHandler for App {
         self.egui_ui();
 
         self.ctx.commit_frame();
-
-        let draw_end = Instant::now();
-        self.frame_times
-            .push(draw_end.duration_since(draw_start).as_secs_f32() * 1000.0);
     }
 
     fn mouse_motion_event(&mut self, x: f32, y: f32) {
@@ -537,6 +633,7 @@ fn main() {
 
 mod shader {
     use glam::Mat4;
+    use glam::Vec3;
     use miniquad::ShaderMeta;
     use miniquad::UniformBlockLayout;
     use miniquad::UniformDesc;
@@ -552,6 +649,9 @@ mod shader {
                 uniforms: vec![
                     UniformDesc::new("proj_matrix", UniformType::Mat4),
                     UniformDesc::new("model_matrix", UniformType::Mat4),
+                    UniformDesc::new("camera_matrix", UniformType::Mat4),
+                    UniformDesc::new("sun_direction", UniformType::Float3),
+                    UniformDesc::new("sun_color", UniformType::Float3),
                 ],
             },
         }
@@ -561,5 +661,8 @@ mod shader {
     pub struct Uniforms {
         pub proj_matrix: Mat4,
         pub model_matrix: Mat4,
+        pub camera_matrix: Mat4,
+        pub sun_direction: Vec3,
+        pub sun_color: Vec3,
     }
 }
