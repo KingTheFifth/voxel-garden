@@ -7,11 +7,14 @@ use miniquad::{
     CullFace, EventHandler, KeyCode, PassAction, Pipeline, PipelineParams, RenderingBackend,
     ShaderSource, UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
+use models::terrain::GenerationPositions;
+use models::terrain::{generate_terrain, TerrainConfig};
+use models::tree::tree;
 use noise::Perlin;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
 use crate::camera::{trackball_control, Movement};
-use crate::models::{generate_terrain, tree, Model, Object};
+use crate::models::{terrain, Object};
 
 mod camera;
 mod models;
@@ -31,13 +34,16 @@ struct App {
     pipeline: Pipeline,
     cube: (Bindings, i32),
 
+    frame_times: AllocRingBuffer<f32>,
+
     prev_update: f64,
     prev_draw: f64,
     fps_history: AllocRingBuffer<f32>,
     view_fps_graph: bool,
 
-    ground: HashMap<IVec2, Vec<InstanceData>>,
-    objects: Vec<Object>,
+    // This is per-chunk
+    terrain_config: TerrainConfig,
+    terrain: HashMap<IVec2, Vec<InstanceData>>,
     voxels: Vec<Voxel>,
 
     sun_direction: Vec3,
@@ -170,6 +176,17 @@ impl App {
                 ..Default::default()
             },
         );
+        // let voxels = bresenham(Voxel::ZERO, Voxel::new(10, 5, 3));
+
+        let terrain_config = TerrainConfig {
+            sample_rate: 0.04,
+            width: 8,
+            height: 20,
+            depth: 8,
+            max_height: 20.,
+            noise: Perlin::new(555),
+        };
+
         let mut app = Self {
             #[cfg(feature = "egui")]
             egui_mq: egui_miniquad::EguiMq::new(&mut *ctx),
@@ -177,23 +194,24 @@ impl App {
             aspect_ratio: 1.0,
             fov_y_radians: 1.0,
             pipeline,
+            frame_times: AllocRingBuffer::new(10),
+            terrain_config,
             prev_update: 0.0,
             prev_draw: 0.0,
             fps_history: AllocRingBuffer::new(256),
             view_fps_graph: false,
-            // ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, Perlin::new(555)),
-            ground: HashMap::new(),
+            terrain: HashMap::new(),
             cube: (bindings, indices.len() as i32),
             sun_direction: Vec3::new(0.0, 1.0, 0.0),
             sun_color: Vec3::new(0.99, 0.72, 0.075),
-            objects: vec![Object::new("tree", tree(0))],
             voxels: vec![],
             keys_down: HashMap::new(),
             mouse_left_down: false,
             mouse_right_down: false,
             mouse_prev_pos: (0.0, 0.0),
-            movement: Movement::Flying {
-                position: Vec3::Y * 10.0,
+            movement: Movement::OnGround {
+                position: Vec3::ZERO,
+                velocity: Vec3::ZERO,
                 look_h: 0.0,
                 look_v: 0.0,
             },
@@ -239,6 +257,18 @@ impl App {
                 });
             });
 
+            egui::Window::new("Debug").show(egui_ctx, |ui| {
+                ui.add(
+                    egui::Slider::new(&mut self.terrain_config.sample_rate, (0.001)..=0.04)
+                        .clamp_to_range(true)
+                        .logarithmic(true),
+                );
+
+                ui.label(format!(
+                    "Average frame time: {:.2} ms",
+                    self.frame_times.iter().sum::<f32>() / self.frame_times.len() as f32
+                ));
+            });
             Window::new("FPS")
                 .collapsible(false)
                 .open(&mut self.view_fps_graph)
@@ -265,17 +295,8 @@ impl App {
         self.egui_mq.draw(&mut *self.ctx);
     }
 
-    fn generate_chunk(chunk: IVec2) -> Vec<InstanceData> {
-        generate_terrain(
-            chunk.x * 8,
-            chunk.y * 8,
-            8,
-            20,
-            8,
-            0.013,
-            20.0,
-            Perlin::new(555),
-        )
+    fn generate_chunk(terrain_config: &TerrainConfig, chunk: IVec2) -> Vec<InstanceData> {
+        generate_terrain(chunk.x * 8, chunk.y * 8, terrain_config).ground
     }
 
     fn draw_ground(&mut self, projection: Mat4, camera: Mat4, camera_position: IVec2) {
@@ -284,9 +305,11 @@ impl App {
             for dx in -8..=8 {
                 let d_chunk = IVec2::new(dx, dy);
                 let chunk_data = self
-                    .ground
+                    .terrain
                     .entry(camera_chunk + d_chunk)
-                    .or_insert_with(|| Self::generate_chunk(camera_chunk + d_chunk));
+                    .or_insert_with(|| {
+                        Self::generate_chunk(&self.terrain_config, camera_chunk + d_chunk)
+                    });
                 self.ctx.buffer_update(
                     self.cube.0.vertex_buffers[1],
                     BufferSource::slice(chunk_data),
@@ -304,23 +327,40 @@ impl App {
         }
     }
 
+    fn draw_spawn_points(&mut self, projection: Mat4, camera: Mat4) {
+        // self.ctx.buffer_update(
+        //     self.cube.0.vertex_buffers[1],
+        //     BufferSource::slice(&self.spawn_points),
+        // );
+        // self.ctx
+        //     .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+        //         proj_matrix: projection,
+        //         model_matrix: camera,
+        //         camera_matrix: camera,
+        //         sun_direction: self.sun_direction,
+        //         sun_color: self.sun_color,
+        //     }));
+        // self.ctx
+        //     .draw(0, self.cube.1, self.terrain.spawn_points.len() as i32);
+    }
+
     fn draw_objects(&mut self, projection: Mat4, camera: Mat4) {
-        for model in self.objects.iter().flat_map(|obj| &obj.models) {
-            self.ctx.buffer_update(
-                self.cube.0.vertex_buffers[1],
-                BufferSource::slice(&model.points),
-            );
-            self.ctx
-                .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                    proj_matrix: projection,
-                    model_matrix: camera
-                        * Mat4::from_rotation_translation(model.rotation, model.translation),
-                    camera_matrix: camera,
-                    sun_direction: self.sun_direction,
-                    sun_color: self.sun_color,
-                }));
-            self.ctx.draw(0, self.cube.1, model.points.len() as i32);
-        }
+        // for model in self.objects.iter().flat_map(|obj| &obj.models) {
+        //     self.ctx.buffer_update(
+        //         self.cube.0.vertex_buffers[1],
+        //         BufferSource::slice(&model.points),
+        //     );
+        //     self.ctx
+        //         .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+        //             proj_matrix: projection,
+        //             model_matrix: camera
+        //                 * Mat4::from_rotation_translation(model.rotation, model.translation),
+        //             camera_matrix: camera,
+        //             sun_direction: self.sun_direction,
+        //             sun_color: self.sun_color,
+        //         }));
+        //     self.ctx.draw(0, self.cube.1, model.points.len() as i32);
+        // }
     }
 
     fn draw_voxels(&mut self, projection: Mat4, camera: Mat4) {
@@ -396,6 +436,52 @@ impl EventHandler for App {
                     *position += (rot_mat * movement_vector.normalize()).truncate() * delta * 10.0;
                 }
             }
+            Movement::OnGround {
+                position,
+                velocity,
+                look_h,
+                look_v: _,
+            } => {
+                let mut movement_vector = Vec4::ZERO;
+                if self.keys_down.get(&KeyCode::W).copied().unwrap_or(false) {
+                    movement_vector += Vec4::Z;
+                }
+                if self.keys_down.get(&KeyCode::S).copied().unwrap_or(false) {
+                    movement_vector += -Vec4::Z;
+                }
+                if self.keys_down.get(&KeyCode::A).copied().unwrap_or(false) {
+                    movement_vector += Vec4::X;
+                }
+                if self.keys_down.get(&KeyCode::D).copied().unwrap_or(false) {
+                    movement_vector += -Vec4::X;
+                }
+                if movement_vector.length_squared() != 0.0 {
+                    let rot_mat = Mat4::from_quat(Quat::from_rotation_y(*look_h).normalize());
+                    *position += (rot_mat * movement_vector.normalize()).truncate() * delta * 10.0;
+                }
+
+                let height_at_p = self.terrain_config.sample(position.x, position.z) + 2.0;
+
+                let mut on_ground = position.y <= height_at_p;
+                if on_ground
+                    && self
+                        .keys_down
+                        .get(&KeyCode::Space)
+                        .copied()
+                        .unwrap_or(false)
+                {
+                    velocity.y = 5.0;
+                    on_ground = false;
+                }
+
+                if on_ground {
+                    *velocity = Vec3::ZERO;
+                    position.y = height_at_p;
+                } else {
+                    velocity.y -= 20.0 * delta; // gravity
+                    *position += delta * *velocity;
+                }
+            }
         }
     }
 
@@ -421,7 +507,7 @@ impl EventHandler for App {
 
         let camera_position_2d = match self.movement {
             Movement::Trackball { .. } => IVec2::new(0, 0),
-            Movement::Flying { position, .. } => {
+            Movement::Flying { position, .. } | Movement::OnGround { position, .. } => {
                 IVec2::new(position.x.trunc() as i32, position.z.trunc() as i32)
             }
         };
@@ -430,6 +516,7 @@ impl EventHandler for App {
         self.draw_ground(projection, camera, camera_position_2d);
         self.draw_objects(projection, camera);
         self.draw_voxels(projection, camera);
+        self.draw_spawn_points(projection, camera);
 
         self.ctx.end_render_pass();
 
@@ -458,6 +545,12 @@ impl EventHandler for App {
                 position: _,
                 look_h,
                 look_v,
+            }
+            | Movement::OnGround {
+                position: _,
+                velocity: _,
+                look_h,
+                look_v,
             } => {
                 *look_h += (self.mouse_prev_pos.0 - x) / 50.0;
                 *look_v -= (self.mouse_prev_pos.1 - y) / 50.0;
@@ -483,6 +576,7 @@ impl EventHandler for App {
                 *down_pos = (x, y);
             }
             Movement::Flying { .. } => {}
+            Movement::OnGround { .. } => {}
         }
         match mb {
             miniquad::MouseButton::Left => self.mouse_left_down = true,

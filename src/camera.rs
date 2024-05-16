@@ -12,12 +12,21 @@ pub enum Movement {
         look_h: f32,
         look_v: f32,
     },
+    OnGround {
+        position: Vec3,
+        velocity: Vec3,
+        look_h: f32,
+        look_v: f32,
+    },
 }
 
 impl Movement {
     pub fn camera_matrix(&self) -> Mat4 {
         match self {
-            Movement::Trackball { down_pos, matrix } => {
+            Movement::Trackball {
+                down_pos: _,
+                matrix: _,
+            } => {
                 let scale = 5.0;
                 Mat4::look_at_rh(
                     scale * Vec3::new(0.0, 0.0, 5.0),
@@ -27,6 +36,12 @@ impl Movement {
             }
             Movement::Flying {
                 position,
+                look_h,
+                look_v,
+            }
+            | Movement::OnGround {
+                position,
+                velocity: _,
                 look_h,
                 look_v,
             } => Mat4::look_at_rh(
