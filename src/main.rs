@@ -298,8 +298,8 @@ impl App {
 
     fn draw_ground(&mut self, projection: Mat4, camera: Mat4, camera_position: IVec2) {
         let camera_chunk = IVec2::new(camera_position.x / 8, camera_position.y / 8);
-        for dy in -0..=0 {
-            for dx in -0..=0 {
+        for dy in -8..=8 {
+            for dx in -8..=8 {
                 let d_chunk = IVec2::new(dx, dy);
                 let chunk_data = self
                     .terrain
@@ -327,8 +327,8 @@ impl App {
 
     fn draw_spawn_points(&mut self, projection: Mat4, camera: Mat4, camera_position: IVec2) {
         let camera_chunk = IVec2::new(camera_position.x / 8, camera_position.y / 8);
-        for dy in -0..=0 {
-            for dx in -0..=0 {
+        for dy in -8..=8 {
+            for dx in -8..=8 {
                 let d_chunk = IVec2::new(dx, dy);
                 let chunk_data = self
                     .terrain
@@ -356,8 +356,8 @@ impl App {
 
     fn draw_objects(&mut self, projection: Mat4, camera: Mat4, camera_position: IVec2) {
         let camera_chunk = IVec2::new(camera_position.x / 8, camera_position.y / 8);
-        for dy in -0..=0 {
-            for dx in -0..=0 {
+        for dy in -8..=8 {
+            for dx in -8..=8 {
                 let d_chunk = IVec2::new(dx, dy);
                 let models = self
                     .terrain
