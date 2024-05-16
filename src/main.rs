@@ -361,31 +361,31 @@ impl App {
     }
 
     fn draw_voxels(&mut self, projection: Mat4, camera: Mat4) {
-        let data: Vec<_> = self
-            .voxels
-            .iter()
-            .copied()
-            .map(
-                |Voxel {
-                     position: Point { x, y, z },
-                     color,
-                 }| InstanceData {
-                    position: Vec3::new(x as f32, y as f32, z as f32),
-                    color,
-                },
-            )
-            .collect();
-        self.ctx
-            .buffer_update(self.cube.0.vertex_buffers[1], BufferSource::slice(&data));
-        self.ctx
-            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                proj_matrix: projection,
-                model_matrix: camera,
-                camera_matrix: camera,
-                sun_color: self.sun_color,
-                sun_direction: self.sun_direction,
-            }));
-        self.ctx.draw(0, self.cube.1, data.len() as i32);
+        // let data: Vec<_> = self
+        //     .voxels
+        //     .iter()
+        //     .copied()
+        //     .map(
+        //         |Voxel {
+        //              position: Point { x, y, z },
+        //              color,
+        //          }| InstanceData {
+        //             position: Vec3::new(x as f32, y as f32, z as f32),
+        //             color,
+        //         },
+        //     )
+        //     .collect();
+        // self.ctx
+        //     .buffer_update(self.cube.0.vertex_buffers[1], BufferSource::slice(&data));
+        // self.ctx
+        //     .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+        //         proj_matrix: projection,
+        //         model_matrix: camera,
+        //         camera_matrix: camera,
+        //         sun_color: self.sun_color,
+        //         sun_direction: self.sun_direction,
+        //     }));
+        // self.ctx.draw(0, self.cube.1, data.len() as i32);
     }
 }
 
@@ -511,9 +511,9 @@ impl EventHandler for App {
 
         self.ctx.apply_bindings(&self.cube.0);
         self.draw_ground(projection, camera, camera_position_2d);
-        self.draw_objects(projection, camera);
-        self.draw_voxels(projection, camera);
-        self.draw_spawn_points(projection, camera);
+        // self.draw_objects(projection, camera);
+        // self.draw_voxels(projection, camera);
+        // self.draw_spawn_points(projection, camera);
 
         self.ctx.end_render_pass();
 
