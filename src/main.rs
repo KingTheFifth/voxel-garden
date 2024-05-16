@@ -1,7 +1,7 @@
 use std::mem::size_of;
 use std::{collections::HashMap, f32::consts::PI};
 
-use glam::{IVec2, IVec3, Mat4, Quat, Vec3, Vec4};
+use glam::{IVec2, IVec3, Mat4, Quat, Vec2, Vec3, Vec4};
 use miniquad::{
     conf, date, window, Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, Comparison,
     CullFace, EventHandler, KeyCode, PassAction, Pipeline, PipelineParams, RenderingBackend,
@@ -51,6 +51,7 @@ struct App {
     mouse_right_down: bool,
     mouse_prev_pos: (f32, f32),
     movement: Movement,
+    render_distance: i32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -176,11 +177,11 @@ impl App {
         // let voxels = bresenham(Voxel::ZERO, Voxel::new(10, 5, 3));
 
         let terrain_config = TerrainConfig {
-            sample_rate: 0.04,
+            sample_rate: 0.004,
             width: 8,
             height: 20,
             depth: 8,
-            max_height: 20.,
+            max_height: 40.,
             noise: Perlin::new(555),
         };
 
@@ -212,6 +213,7 @@ impl App {
                 look_h: 0.0,
                 look_v: 0.0,
             },
+            render_distance: 32,
             // movement: Movement::Trackball {
             //     down_pos: (0.0, 0.0),
             //     matrix: Mat4::IDENTITY,
@@ -255,11 +257,12 @@ impl App {
             });
 
             egui::Window::new("Debug").show(egui_ctx, |ui| {
-                ui.add(
-                    egui::Slider::new(&mut self.terrain_config.sample_rate, (0.001)..=0.04)
-                        .clamp_to_range(true)
-                        .logarithmic(true),
-                );
+                ui.horizontal(|ui| {
+                    ui.label("render distance");
+                    ui.add(
+                        egui::Slider::new(&mut self.render_distance, 1..=128).clamp_to_range(true),
+                    );
+                });
 
                 ui.label(format!(
                     "Average frame time: {:.2} ms",
@@ -296,10 +299,24 @@ impl App {
         generate_terrain(chunk.x * 8, chunk.y * 8, terrain_config).ground
     }
 
-    fn draw_ground(&mut self, projection: Mat4, camera: Mat4, camera_position: IVec2) {
+    fn draw_ground(
+        &mut self,
+        projection: Mat4,
+        camera: Mat4,
+        camera_position: IVec2,
+        camera_look_h: f32,
+    ) {
         let camera_chunk = IVec2::new(camera_position.x / 8, camera_position.y / 8);
-        for dy in -8..=8 {
-            for dx in -8..=8 {
+        for dy in -self.render_distance..=self.render_distance {
+            for dx in -self.render_distance..=self.render_distance {
+                let (vs, vc) = camera_look_h.sin_cos();
+                let look_v = Vec2::new(vs, vc).normalize();
+                if {
+                    let d_chunk = Vec2::new(dx as f32, dy as f32);
+                    look_v.dot(d_chunk) < 0.0
+                } {
+                    continue;
+                }
                 let d_chunk = IVec2::new(dx, dy);
                 let chunk_data = self
                     .terrain
@@ -454,10 +471,10 @@ impl EventHandler for App {
                 }
                 if movement_vector.length_squared() != 0.0 {
                     let rot_mat = Mat4::from_quat(Quat::from_rotation_y(*look_h).normalize());
-                    *position += (rot_mat * movement_vector.normalize()).truncate() * delta * 10.0;
+                    *position += (rot_mat * movement_vector.normalize()).truncate() * delta * 40.0;
                 }
 
-                let height_at_p = self.terrain_config.sample(position.x, position.z) + 2.0;
+                let height_at_p = self.terrain_config.sample(position.x, position.z) + 50.0;
 
                 let mut on_ground = position.y <= height_at_p;
                 if on_ground
@@ -467,7 +484,7 @@ impl EventHandler for App {
                         .copied()
                         .unwrap_or(false)
                 {
-                    velocity.y = 5.0;
+                    velocity.y = 50.0;
                     on_ground = false;
                 }
 
@@ -475,7 +492,7 @@ impl EventHandler for App {
                     *velocity = Vec3::ZERO;
                     position.y = height_at_p;
                 } else {
-                    velocity.y -= 20.0 * delta; // gravity
+                    velocity.y -= 100.0 * delta; // gravity
                     *position += delta * *velocity;
                 }
             }
@@ -508,9 +525,13 @@ impl EventHandler for App {
                 IVec2::new(position.x.trunc() as i32, position.z.trunc() as i32)
             }
         };
+        let camera_look_h = match self.movement {
+            Movement::Trackball { .. } => 0.0,
+            Movement::Flying { look_h, .. } | Movement::OnGround { look_h, .. } => look_h,
+        };
 
         self.ctx.apply_bindings(&self.cube.0);
-        self.draw_ground(projection, camera, camera_position_2d);
+        self.draw_ground(projection, camera, camera_position_2d, camera_look_h);
         // self.draw_objects(projection, camera);
         // self.draw_voxels(projection, camera);
         // self.draw_spawn_points(projection, camera);
