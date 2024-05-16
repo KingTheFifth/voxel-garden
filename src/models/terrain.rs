@@ -37,15 +37,15 @@ impl GenerationPositions {
     }
 }
 
-pub fn generate_terrain(config: &TerrainConfig) -> GenerationPositions {
+pub fn generate_terrain(x: i32, z: i32, config: &TerrainConfig) -> GenerationPositions {
     let mut rng = rand::thread_rng();
     let mut instance_data = Vec::new();
     let mut spawn_points: Vec<InstanceData> = Vec::new();
     let depth = config.depth;
     let width = config.width;
 
-    for z in 0..depth {
-        for x in 0..width {
+    for z in z..depth {
+        for x in x..width {
             let current_height = config.sample(x as f32, z as f32).trunc();
 
             // Generate instance data for ground voxels

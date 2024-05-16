@@ -1,20 +1,17 @@
 use std::mem::size_of;
 use std::{collections::HashMap, f32::consts::PI};
 
-use glam::{IVec3, Mat4, Quat, Vec3, Vec4};
+use glam::{IVec2, IVec3, Mat4, Quat, Vec3, Vec4};
 use miniquad::{
     conf, date, window, Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, Comparison,
     CullFace, EventHandler, KeyCode, PassAction, Pipeline, PipelineParams, RenderingBackend,
     ShaderSource, UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
-use models::terrain::GenerationPositions;
 use models::terrain::{generate_terrain, TerrainConfig};
-use models::tree::tree;
 use noise::Perlin;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
 use crate::camera::{trackball_control, Movement};
-use crate::models::Object;
 
 mod camera;
 mod models;
@@ -36,14 +33,14 @@ struct App {
 
     frame_times: AllocRingBuffer<f32>,
 
-    terrain_config: TerrainConfig,
-    terrain: GenerationPositions,
     prev_update: f64,
     prev_draw: f64,
     fps_history: AllocRingBuffer<f32>,
     view_fps_graph: bool,
 
-    objects: Vec<Object>,
+    // This is per-chunk
+    terrain_config: TerrainConfig,
+    terrain: HashMap<IVec2, Vec<InstanceData>>,
     voxels: Vec<Voxel>,
 
     sun_direction: Vec3,
@@ -180,9 +177,9 @@ impl App {
 
         let terrain_config = TerrainConfig {
             sample_rate: 0.04,
-            width: 200,
+            width: 8,
             height: 20,
-            depth: 200,
+            depth: 8,
             max_height: 20.,
             noise: Perlin::new(555),
         };
@@ -195,16 +192,15 @@ impl App {
             fov_y_radians: 1.0,
             pipeline,
             frame_times: AllocRingBuffer::new(10),
-            terrain: generate_terrain(&terrain_config),
             terrain_config,
             prev_update: 0.0,
             prev_draw: 0.0,
             fps_history: AllocRingBuffer::new(256),
             view_fps_graph: false,
+            terrain: HashMap::new(),
             cube: (bindings, indices.len() as i32),
             sun_direction: Vec3::new(0.0, 1.0, 0.0),
             sun_color: Vec3::new(0.99, 0.72, 0.075),
-            objects: vec![Object::new("tree", tree(0))],
             voxels: vec![],
             keys_down: HashMap::new(),
             mouse_left_down: false,
@@ -216,6 +212,10 @@ impl App {
                 look_h: 0.0,
                 look_v: 0.0,
             },
+            // movement: Movement::Trackball {
+            //     down_pos: (0.0, 0.0),
+            //     matrix: Mat4::IDENTITY,
+            // },
         };
         app.resize_event(window_width, window_height);
         app
@@ -260,9 +260,6 @@ impl App {
                         .clamp_to_range(true)
                         .logarithmic(true),
                 );
-                if ui.button("Regenerate Terrain").clicked() {
-                    self.terrain = generate_terrain(&self.terrain_config)
-                }
 
                 ui.label(format!(
                     "Average frame time: {:.2} ms",
@@ -295,57 +292,72 @@ impl App {
         self.egui_mq.draw(&mut *self.ctx);
     }
 
-    fn draw_ground(&mut self, projection: Mat4, camera: Mat4) {
-        self.ctx.buffer_update(
-            self.cube.0.vertex_buffers[1],
-            BufferSource::slice(&self.terrain.ground),
-        );
-        self.ctx
-            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                proj_matrix: projection,
-                model_matrix: camera,
-                camera_matrix: camera,
-                sun_direction: self.sun_direction,
-                sun_color: self.sun_color,
-            }));
-        self.ctx
-            .draw(0, self.cube.1, self.terrain.ground.len() as i32);
+    fn generate_chunk(terrain_config: &TerrainConfig, chunk: IVec2) -> Vec<InstanceData> {
+        generate_terrain(chunk.x * 8, chunk.y * 8, terrain_config).ground
+    }
+
+    fn draw_ground(&mut self, projection: Mat4, camera: Mat4, camera_position: IVec2) {
+        let camera_chunk = IVec2::new(camera_position.x / 8, camera_position.y / 8);
+        for dy in -8..=8 {
+            for dx in -8..=8 {
+                let d_chunk = IVec2::new(dx, dy);
+                let chunk_data = self
+                    .terrain
+                    .entry(camera_chunk + d_chunk)
+                    .or_insert_with(|| {
+                        Self::generate_chunk(&self.terrain_config, camera_chunk + d_chunk)
+                    });
+                self.ctx.buffer_update(
+                    self.cube.0.vertex_buffers[1],
+                    BufferSource::slice(chunk_data),
+                );
+                self.ctx
+                    .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                        proj_matrix: projection,
+                        model_matrix: camera,
+                        camera_matrix: camera,
+                        sun_direction: self.sun_direction,
+                        sun_color: self.sun_color,
+                    }));
+                self.ctx.draw(0, self.cube.1, chunk_data.len() as i32);
+            }
+        }
     }
 
     fn draw_spawn_points(&mut self, projection: Mat4, camera: Mat4) {
-        self.ctx.buffer_update(
-            self.cube.0.vertex_buffers[1],
-            BufferSource::slice(&self.terrain.spawn_points),
-        );
-        self.ctx
-            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                proj_matrix: projection,
-                model_matrix: camera,
-                camera_matrix: camera,
-                sun_direction: self.sun_direction,
-                sun_color: self.sun_color,
-            }));
-        self.ctx
-            .draw(0, self.cube.1, self.terrain.spawn_points.len() as i32);
+        // self.ctx.buffer_update(
+        //     self.cube.0.vertex_buffers[1],
+        //     BufferSource::slice(&self.spawn_points),
+        // );
+        // self.ctx
+        //     .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+        //         proj_matrix: projection,
+        //         model_matrix: camera,
+        //         camera_matrix: camera,
+        //         sun_direction: self.sun_direction,
+        //         sun_color: self.sun_color,
+        //     }));
+        // self.ctx
+        //     .draw(0, self.cube.1, self.terrain.spawn_points.len() as i32);
     }
 
     fn draw_objects(&mut self, projection: Mat4, camera: Mat4) {
-        for model in self.objects.iter().flat_map(|obj| &obj.models) {
-            self.ctx.buffer_update(
-                self.cube.0.vertex_buffers[1],
-                BufferSource::slice(&model.points),
-            );
-            self.ctx
-                .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                    proj_matrix: projection,
-                    model_matrix: camera
-                        * Mat4::from_rotation_translation(model.rotation, model.translation),
-                    camera_matrix: camera,
-                    sun_direction: self.sun_direction,
-                    sun_color: self.sun_color,
-                }));
-            self.ctx.draw(0, self.cube.1, model.points.len() as i32);
-        }
+        // for model in self.objects.iter().flat_map(|obj| &obj.models) {
+        //     self.ctx.buffer_update(
+        //         self.cube.0.vertex_buffers[1],
+        //         BufferSource::slice(&model.points),
+        //     );
+        //     self.ctx
+        //         .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+        //             proj_matrix: projection,
+        //             model_matrix: camera
+        //                 * Mat4::from_rotation_translation(model.rotation, model.translation),
+        //             camera_matrix: camera,
+        //             sun_direction: self.sun_direction,
+        //             sun_color: self.sun_color,
+        //         }));
+        //     self.ctx.draw(0, self.cube.1, model.points.len() as i32);
+        // }
     }
 
     fn draw_voxels(&mut self, projection: Mat4, camera: Mat4) {
@@ -418,7 +430,7 @@ impl EventHandler for App {
                         (Quat::from_rotation_y(*look_h) * Quat::from_rotation_x(*look_v))
                             .normalize(),
                     );
-                    *position += (rot_mat * movement_vector.normalize()).truncate() * delta * 10.;
+                    *position += (rot_mat * movement_vector.normalize()).truncate() * delta * 10.0;
                 }
             }
             Movement::OnGround {
@@ -490,8 +502,15 @@ impl EventHandler for App {
             Mat4::perspective_rh_gl(self.fov_y_radians, self.aspect_ratio, 0.1, 1000.0);
         let camera = self.movement.camera_matrix();
 
+        let camera_position_2d = match self.movement {
+            Movement::Trackball { .. } => IVec2::new(0, 0),
+            Movement::Flying { position, .. } | Movement::OnGround { position, .. } => {
+                IVec2::new(position.x.trunc() as i32, position.z.trunc() as i32)
+            }
+        };
+
         self.ctx.apply_bindings(&self.cube.0);
-        self.draw_ground(projection, camera);
+        self.draw_ground(projection, camera, camera_position_2d);
         self.draw_objects(projection, camera);
         self.draw_voxels(projection, camera);
         self.draw_spawn_points(projection, camera);
