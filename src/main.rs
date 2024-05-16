@@ -7,7 +7,7 @@ use miniquad::{
     CullFace, EventHandler, KeyCode, PassAction, Pipeline, PipelineParams, RenderingBackend,
     ShaderSource, UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
-use models::terrain::{generate_terrain, TerrainConfig};
+use models::terrain::{generate_terrain, TerrainConfig, GenerationPositions};
 use noise::Perlin;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
@@ -40,7 +40,7 @@ struct App {
 
     // This is per-chunk
     terrain_config: TerrainConfig,
-    terrain: HashMap<IVec2, Vec<InstanceData>>,
+    terrain: HashMap<IVec2, GenerationPositions>,
     voxels: Vec<Voxel>,
 
     sun_direction: Vec3,
@@ -292,8 +292,8 @@ impl App {
         self.egui_mq.draw(&mut *self.ctx);
     }
 
-    fn generate_chunk(terrain_config: &TerrainConfig, chunk: IVec2) -> Vec<InstanceData> {
-        generate_terrain(chunk.x * 8, chunk.y * 8, terrain_config).ground
+    fn generate_chunk(terrain_config: &TerrainConfig, chunk: IVec2) -> GenerationPositions {
+        generate_terrain(chunk.x * 8, chunk.y * 8, terrain_config)
     }
 
     fn draw_ground(&mut self, projection: Mat4, camera: Mat4, camera_position: IVec2) {
@@ -309,7 +309,7 @@ impl App {
                     });
                 self.ctx.buffer_update(
                     self.cube.0.vertex_buffers[1],
-                    BufferSource::slice(chunk_data),
+                    BufferSource::slice(&chunk_data.ground),
                 );
                 self.ctx
                     .apply_uniforms(UniformsSource::table(&shader::Uniforms {
@@ -319,7 +319,7 @@ impl App {
                         sun_direction: self.sun_direction,
                         sun_color: self.sun_color,
                     }));
-                self.ctx.draw(0, self.cube.1, chunk_data.len() as i32);
+                self.ctx.draw(0, self.cube.1, chunk_data.ground.len() as i32);
             }
         }
     }
