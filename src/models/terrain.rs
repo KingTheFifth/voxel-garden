@@ -83,8 +83,8 @@ pub fn generate_terrain(x: i32, z: i32, config: &TerrainConfig) -> GenerationPos
     let width = config.width;
     let mut flowers: Vec<Object> = Vec::new();
 
-    for z in z..depth {
-        for x in x..width {
+    for z in z..z + depth {
+        for x in x..x + width {
             let current_height = config.sample(x as f32, z as f32).trunc();
 
             // Generate instance data for ground voxels
