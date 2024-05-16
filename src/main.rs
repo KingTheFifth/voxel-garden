@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use std::mem::size_of;
+use std::{collections::HashMap, f32::consts::PI};
 
 use glam::{IVec3, Mat4, Quat, Vec3, Vec4};
 use miniquad::{
@@ -531,7 +531,8 @@ impl EventHandler for App {
                 look_v,
             } => {
                 *look_h += (self.mouse_prev_pos.0 - x) / 100.0;
-                *look_v -= (self.mouse_prev_pos.1 - y) / 100.0;
+                *look_v = (*look_v - (self.mouse_prev_pos.1 - y) / 100.0)
+                    .clamp(-PI / 2.0 + 0.01, PI / 2.0 - 0.01);
             }
         }
         self.mouse_prev_pos = (x, y);
