@@ -500,7 +500,12 @@ impl EventHandler for App {
 
         let projection =
             Mat4::perspective_rh_gl(self.fov_y_radians, self.aspect_ratio, 0.1, 1000.0);
-        let camera = self.movement.camera_matrix();
+        // FIXME: uh oh, sthinky
+        let camera = self.movement.camera_matrix()
+            * match self.movement {
+                Movement::Trackball { matrix, .. } => matrix,
+                _ => Mat4::IDENTITY,
+            };
 
         let camera_position_2d = match self.movement {
             Movement::Trackball { .. } => IVec2::new(0, 0),
