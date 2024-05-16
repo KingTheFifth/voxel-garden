@@ -7,7 +7,7 @@ use miniquad::{
     CullFace, EventHandler, KeyCode, PassAction, Pipeline, PipelineParams, RenderingBackend,
     ShaderSource, UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
-use models::terrain::{generate_terrain, TerrainConfig, GenerationPositions};
+use models::terrain::{generate_terrain, GenerationPositions, TerrainConfig};
 use noise::Perlin;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
@@ -319,26 +319,39 @@ impl App {
                         sun_direction: self.sun_direction,
                         sun_color: self.sun_color,
                     }));
-                self.ctx.draw(0, self.cube.1, chunk_data.ground.len() as i32);
+                self.ctx
+                    .draw(0, self.cube.1, chunk_data.ground.len() as i32);
             }
         }
     }
 
-    fn draw_spawn_points(&mut self, projection: Mat4, camera: Mat4) {
-        // self.ctx.buffer_update(
-        //     self.cube.0.vertex_buffers[1],
-        //     BufferSource::slice(&self.spawn_points),
-        // );
-        // self.ctx
-        //     .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-        //         proj_matrix: projection,
-        //         model_matrix: camera,
-        //         camera_matrix: camera,
-        //         sun_direction: self.sun_direction,
-        //         sun_color: self.sun_color,
-        //     }));
-        // self.ctx
-        //     .draw(0, self.cube.1, self.terrain.spawn_points.len() as i32);
+    fn draw_spawn_points(&mut self, projection: Mat4, camera: Mat4, camera_position: IVec2) {
+        let camera_chunk = IVec2::new(camera_position.x / 8, camera_position.y / 8);
+        for dy in -8..=8 {
+            for dx in -8..=8 {
+                let d_chunk = IVec2::new(dx, dy);
+                let chunk_data = self
+                    .terrain
+                    .entry(camera_chunk + d_chunk)
+                    .or_insert_with(|| {
+                        Self::generate_chunk(&self.terrain_config, camera_chunk + d_chunk)
+                    });
+                self.ctx.buffer_update(
+                    self.cube.0.vertex_buffers[1],
+                    BufferSource::slice(&chunk_data.spawn_points),
+                );
+                self.ctx
+                    .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                        proj_matrix: projection,
+                        model_matrix: camera,
+                        camera_matrix: camera,
+                        sun_direction: self.sun_direction,
+                        sun_color: self.sun_color,
+                    }));
+                self.ctx
+                    .draw(0, self.cube.1, chunk_data.spawn_points.len() as i32);
+            }
+        }
     }
 
     fn draw_objects(&mut self, projection: Mat4, camera: Mat4) {
@@ -513,7 +526,7 @@ impl EventHandler for App {
         self.draw_ground(projection, camera, camera_position_2d);
         self.draw_objects(projection, camera);
         self.draw_voxels(projection, camera);
-        self.draw_spawn_points(projection, camera);
+        self.draw_spawn_points(projection, camera, camera_position_2d);
 
         self.ctx.end_render_pass();
 
