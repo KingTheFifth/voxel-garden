@@ -1,8 +1,12 @@
+use crate::models::flower;
+use crate::models::Model;
 use crate::utils::RED;
 use crate::InstanceData;
 use glam::{Vec3, Vec4};
 use noise::{NoiseFn, Perlin};
 use rand::prelude::*;
+
+type Object = Vec<Model>;
 
 pub enum SpawnType {
     Tree,
@@ -45,13 +49,28 @@ impl SpawnPoint {
 pub struct GenerationPositions {
     pub ground: Vec<InstanceData>,
     pub spawn_points: Vec<SpawnPoint>,
+    pub objects: Vec<Object>,
 }
 
 impl GenerationPositions {
     fn new(ground: Vec<InstanceData>, spawn_points: Vec<SpawnPoint>) -> GenerationPositions {
+        let objects = Vec::new();
         GenerationPositions {
             ground,
             spawn_points,
+            objects,
+        }
+    }
+
+    fn new_with_object(
+        ground: Vec<InstanceData>,
+        spawn_points: Vec<SpawnPoint>,
+        objects: Vec<Object>,
+    ) -> GenerationPositions {
+        GenerationPositions {
+            ground,
+            spawn_points,
+            objects,
         }
     }
 }
@@ -62,6 +81,7 @@ pub fn generate_terrain(x: i32, z: i32, config: &TerrainConfig) -> GenerationPos
     let mut spawn_points: Vec<SpawnPoint> = Vec::new();
     let depth = config.depth;
     let width = config.width;
+    let mut flowers: Vec<Object> = Vec::new();
 
     for z in z..depth {
         for x in x..width {
@@ -75,6 +95,8 @@ pub fn generate_terrain(x: i32, z: i32, config: &TerrainConfig) -> GenerationPos
             let rand: f64 = rng.gen();
             // Flower
             if rand < 0.05 {
+                let flower = flower(0, position.x, position.y + 1., position.z);
+                flowers.push(flower);
                 let instance_data = InstanceData::new(
                     Vec3::new(
                         position.x,
@@ -87,5 +109,6 @@ pub fn generate_terrain(x: i32, z: i32, config: &TerrainConfig) -> GenerationPos
             }
         }
     }
-    GenerationPositions::new(instance_data, spawn_points)
+    GenerationPositions::new_with_object(instance_data, spawn_points, flowers)
+    //GenerationPositions::new(instance_data, spawn_points)
 }
