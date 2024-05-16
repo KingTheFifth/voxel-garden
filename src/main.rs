@@ -298,8 +298,8 @@ impl App {
 
     fn draw_ground(&mut self, projection: Mat4, camera: Mat4, camera_position: IVec2) {
         let camera_chunk = IVec2::new(camera_position.x / 8, camera_position.y / 8);
-        for dy in -8..=8 {
-            for dx in -8..=8 {
+        for dy in -0..=0 {
+            for dx in -0..=0 {
                 let d_chunk = IVec2::new(dx, dy);
                 let chunk_data = self
                     .terrain
@@ -327,8 +327,8 @@ impl App {
 
     fn draw_spawn_points(&mut self, projection: Mat4, camera: Mat4, camera_position: IVec2) {
         let camera_chunk = IVec2::new(camera_position.x / 8, camera_position.y / 8);
-        for dy in -8..=8 {
-            for dx in -8..=8 {
+        for dy in -0..=0 {
+            for dx in -0..=0 {
                 let d_chunk = IVec2::new(dx, dy);
                 let chunk_data = self
                     .terrain
@@ -343,8 +343,8 @@ impl App {
                 self.ctx
                     .apply_uniforms(UniformsSource::table(&shader::Uniforms {
                         proj_matrix: projection,
-                        model_matrix: camera,
-                        camera_matrix: camera,
+                        model_matrix: camera,  // world-to-view??
+                        camera_matrix: camera, // model-to-world??
                         sun_direction: self.sun_direction,
                         sun_color: self.sun_color,
                     }));
@@ -355,60 +355,69 @@ impl App {
     }
 
     fn draw_objects(&mut self, projection: Mat4, camera: Mat4, camera_position: IVec2) {
-        //let camera_chunk = IVec2::new(camera_position.x / 8, camera_position.y / 8);
-        //for dy in -8..=8 {
-        //    for dx in -8..=8 {
-        //        let d_chunk = IVec2::new(dx, dy);
-        //        let chunk_data = self
-        //            .terrain
-        //            .entry(camera_chunk + d_chunk)
-        //            .or_insert_with(|| {
-        //                Self::generate_chunk(&self.terrain_config, camera_chunk + d_chunk)
-        //            });
-        //        self.ctx.buffer_update(
-        //            self.cube.0.vertex_buffers[1],
-        //            BufferSource::slice(&chunk_data.objects),
-        //        );
-        //        self.ctx
-        //            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-        //                proj_matrix: projection,
-        //                model_matrix: camera,
-        //                camera_matrix: camera,
-        //                sun_direction: self.sun_direction,
-        //                sun_color: self.sun_color,
-        //            }));
-        //        self.ctx
-        //            .draw(0, self.cube.1, chunk_data.objects.len() as i32);
-        //    }
-        //}
+        let camera_chunk = IVec2::new(camera_position.x / 8, camera_position.y / 8);
+        for dy in -0..=0 {
+            for dx in -0..=0 {
+                let d_chunk = IVec2::new(dx, dy);
+                let models = self
+                    .terrain
+                    .entry(camera_chunk + d_chunk)
+                    .or_insert_with(|| {
+                        Self::generate_chunk(&self.terrain_config, camera_chunk + d_chunk)
+                    })
+                    .objects
+                    .iter()
+                    .flatten();
+
+                for model in models {
+                    self.ctx.buffer_update(
+                        self.cube.0.vertex_buffers[1],
+                        BufferSource::slice(&model.points),
+                    );
+                    self.ctx
+                        .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                            proj_matrix: projection,
+                            model_matrix: camera
+                                * Mat4::from_rotation_translation(
+                                    model.rotation,
+                                    model.translation,
+                                ),
+                            camera_matrix: camera,
+                            sun_direction: self.sun_direction,
+                            sun_color: self.sun_color,
+                        }));
+                    self.ctx.draw(0, self.cube.1, model.points.len() as i32);
+                }
+            }
+        }
     }
 
     fn draw_voxels(&mut self, projection: Mat4, camera: Mat4) {
-        // let data: Vec<_> = self
-        //     .voxels
-        //     .iter()
-        //     .copied()
-        //     .map(
-        //         |Voxel {
-        //              position: Point { x, y, z },
-        //              color,
-        //          }| InstanceData {
-        //             position: Vec3::new(x as f32, y as f32, z as f32),
-        //             color,
-        //         },
-        //     )
-        //     .collect();
-        // self.ctx
-        //     .buffer_update(self.cube.0.vertex_buffers[1], BufferSource::slice(&data));
-        // self.ctx
-        //     .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-        //         proj_matrix: projection,
-        //         model_matrix: camera,
-        //         camera_matrix: camera,
-        //         sun_color: self.sun_color,
-        //         sun_direction: self.sun_direction,
-        //     }));
-        // self.ctx.draw(0, self.cube.1, data.len() as i32);
+        let data: Vec<_> = self
+            .voxels
+            .iter()
+            .copied()
+            .map(
+                |Voxel {
+                     position: Point { x, y, z },
+                     color,
+                 }| InstanceData {
+                    position: Vec3::new(x as f32, y as f32, z as f32),
+                    color,
+                },
+            )
+            .collect();
+        self.ctx
+            .buffer_update(self.cube.0.vertex_buffers[1], BufferSource::slice(&data));
+        self.ctx
+            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                proj_matrix: projection,
+                model_matrix: camera,
+                camera_matrix: camera,
+                sun_color: self.sun_color,
+                sun_direction: self.sun_direction,
+            }));
+        self.ctx.draw(0, self.cube.1, data.len() as i32);
     }
 }
 

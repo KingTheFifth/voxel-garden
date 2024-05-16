@@ -95,8 +95,6 @@ pub fn generate_terrain(x: i32, z: i32, config: &TerrainConfig) -> GenerationPos
             let rand: f64 = rng.gen();
             // Flower
             if rand < 0.05 {
-                let flower = flower(0, position.x, position.y + 1., position.z);
-                flowers.push(flower);
                 let instance_data = InstanceData::new(
                     Vec3::new(
                         position.x,
@@ -106,6 +104,9 @@ pub fn generate_terrain(x: i32, z: i32, config: &TerrainConfig) -> GenerationPos
                     RED,
                 );
                 spawn_points.push(SpawnPoint::new(instance_data, SpawnType::Flower));
+
+                let flower = flower(0, position.x, position.y + 1., position.z);
+                flowers.push(flower);
             }
         }
     }
