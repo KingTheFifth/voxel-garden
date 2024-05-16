@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::mem::size_of;
-use std::sync::atomic;
 
 use glam::{IVec3, Mat3, Mat4, Quat, Vec3, Vec4};
 use miniquad::{
@@ -13,10 +12,12 @@ use models::terrain::{generate_terrain, TerrainConfig};
 use models::tree::tree;
 use noise::Perlin;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
-use utils::arb_rotate;
 
-static NEXT_ID: atomic::AtomicU64 = atomic::AtomicU64::new(0);
+use crate::camera::Movement;
+use crate::models::Object;
+use crate::utils::arb_rotate;
 
+mod camera;
 mod models;
 mod utils;
 
@@ -56,55 +57,10 @@ struct App {
     movement: Movement,
 }
 
-enum Movement {
-    Trackball {
-        down_pos: (f32, f32),
-        matrix: Mat4,
-    },
-    Flying {
-        position: Vec3,
-        look_h: f32,
-        look_v: f32,
-    },
-    OnGround {
-        position: Vec3,
-        velocity: Vec3,
-        look_h: f32,
-        look_v: f32,
-    },
-}
-
 #[derive(Clone, Copy, Debug)]
 struct Voxel {
     position: Point,
     color: Color,
-}
-
-#[derive(Clone)]
-struct Object {
-    // objects having unique IDs could be useful for debugging at a later stage
-    _id: String,
-    models: Vec<Model>,
-}
-
-impl Object {
-    fn new(kind: &str, models: Vec<Model>) -> Self {
-        Self {
-            _id: format!(
-                "{}-{}",
-                NEXT_ID.fetch_add(1, atomic::Ordering::SeqCst),
-                kind
-            ),
-            models,
-        }
-    }
-}
-
-#[derive(Clone)]
-struct Model {
-    points: Vec<InstanceData>,
-    rotation: Quat,
-    translation: Vec3,
 }
 
 #[repr(C)]
@@ -560,23 +516,7 @@ impl EventHandler for App {
 
         let projection =
             Mat4::perspective_rh_gl(self.fov_y_radians, self.aspect_ratio, 0.1, 1000.0);
-        let camera = match self.movement {
-            Movement::Trackball {
-                down_pos: _,
-                matrix: trackball_rotation_matrix,
-            } => trackball_camera_matrix() * trackball_rotation_matrix,
-            Movement::Flying {
-                position,
-                look_h,
-                look_v,
-            }
-            | Movement::OnGround {
-                position,
-                velocity: _,
-                look_h,
-                look_v,
-            } => flying_camera_matrix(position, look_v, look_h),
-        };
+        let camera = self.movement.camera_matrix();
 
         self.ctx.apply_bindings(&self.cube.0);
         self.draw_ground(projection, camera);
@@ -596,6 +536,7 @@ impl EventHandler for App {
         #[cfg(feature = "egui")]
         self.egui_mq.mouse_motion_event(x, y);
 
+        let camera_matrix = self.movement.camera_matrix();
         match &mut self.movement {
             Movement::Trackball {
                 down_pos: _,
@@ -603,8 +544,7 @@ impl EventHandler for App {
             } => {
                 if self.mouse_left_down {
                     *matrix =
-                        trackball_control(trackball_camera_matrix(), (x, y), self.mouse_prev_pos)
-                            * *matrix;
+                        trackball_control(camera_matrix, (x, y), self.mouse_prev_pos) * *matrix;
                 }
             }
             Movement::Flying {

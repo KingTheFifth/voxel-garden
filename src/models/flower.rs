@@ -1,7 +1,8 @@
 use glam::{Quat, Vec3};
 
+use crate::models::Model;
 use crate::utils::{BROWN, YELLOW};
-use crate::{InstanceData, Model};
+use crate::InstanceData;
 
 pub fn flower(_seed: u64) -> Vec<Model> {
     let stem = Model {
