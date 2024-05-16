@@ -4,6 +4,11 @@ use glam::{Vec3, Vec4};
 use noise::{NoiseFn, Perlin};
 use rand::prelude::*;
 
+pub enum SpawnType {
+    Tree,
+    Flower,
+}
+
 #[derive(Clone)]
 pub struct TerrainConfig {
     pub sample_rate: f32,
@@ -23,13 +28,27 @@ impl TerrainConfig {
     }
 }
 
+pub struct SpawnPoint {
+    instance_data: InstanceData,
+    spawn_type: SpawnType,
+}
+
+impl SpawnPoint {
+    pub fn new(instance_data: InstanceData, spawn_type: SpawnType) -> SpawnPoint {
+        SpawnPoint {
+            instance_data,
+            spawn_type,
+        }
+    }
+}
+
 pub struct GenerationPositions {
     pub ground: Vec<InstanceData>,
-    pub spawn_points: Vec<InstanceData>,
+    pub spawn_points: Vec<SpawnPoint>,
 }
 
 impl GenerationPositions {
-    fn new(ground: Vec<InstanceData>, spawn_points: Vec<InstanceData>) -> GenerationPositions {
+    fn new(ground: Vec<InstanceData>, spawn_points: Vec<SpawnPoint>) -> GenerationPositions {
         GenerationPositions {
             ground,
             spawn_points,
@@ -40,7 +59,7 @@ impl GenerationPositions {
 pub fn generate_terrain(x: i32, z: i32, config: &TerrainConfig) -> GenerationPositions {
     let mut rng = rand::thread_rng();
     let mut instance_data = Vec::new();
-    let mut spawn_points: Vec<InstanceData> = Vec::new();
+    let mut spawn_points: Vec<SpawnPoint> = Vec::new();
     let depth = config.depth;
     let width = config.width;
 
@@ -56,14 +75,15 @@ pub fn generate_terrain(x: i32, z: i32, config: &TerrainConfig) -> GenerationPos
             let rand: f64 = rng.gen();
             // Flower
             if rand < 0.05 {
-                spawn_points.push(InstanceData::new(
+                let instance_data = InstanceData::new(
                     Vec3::new(
                         position.x,
-                        position.y + 1., // We place thing on the ground, not in it
+                        position.y + 1., // We place thing on the ground, not in in
                         position.z,
                     ),
                     RED,
-                ));
+                );
+                spawn_points.push(SpawnPoint::new(instance_data, SpawnType::Flower));
             }
         }
     }
