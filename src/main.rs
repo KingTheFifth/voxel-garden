@@ -1,17 +1,21 @@
 use std::collections::HashMap;
 use std::mem::size_of;
 
-use glam::{IVec3, Mat4, Quat, Vec3, Vec4};
+use glam::{IVec3, Mat3, Mat4, Quat, Vec3, Vec4};
 use miniquad::{
     conf, date, window, Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, Comparison,
     CullFace, EventHandler, KeyCode, PassAction, Pipeline, PipelineParams, RenderingBackend,
     ShaderSource, UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
+use models::terrain::GenerationPositions;
+use models::terrain::{generate_terrain, TerrainConfig};
+use models::tree::tree;
 use noise::Perlin;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
-use crate::camera::{trackball_control, Movement};
-use crate::models::{generate_terrain, tree, Model, Object};
+use crate::camera::Movement;
+use crate::models::Object;
+use crate::utils::arb_rotate;
 
 mod camera;
 mod models;
@@ -31,12 +35,15 @@ struct App {
     pipeline: Pipeline,
     cube: (Bindings, i32),
 
+    frame_times: AllocRingBuffer<f32>,
+
+    terrain_config: TerrainConfig,
+    terrain: GenerationPositions,
     prev_update: f64,
     prev_draw: f64,
     fps_history: AllocRingBuffer<f32>,
     view_fps_graph: bool,
 
-    ground: Vec<InstanceData>,
     objects: Vec<Object>,
     voxels: Vec<Voxel>,
 
@@ -108,10 +115,10 @@ impl App {
             BufferSource::slice(&vertices),
         );
 
-        // Flat shading uses the attributes of the last vertex of a triangle 
+        // Flat shading uses the attributes of the last vertex of a triangle
         // for every fragment in it
-        // By making sure that both triangles for a side of a voxel shares the 
-        // same last vertex, the entire side gets the same attributes such as 
+        // By making sure that both triangles for a side of a voxel shares the
+        // same last vertex, the entire side gets the same attributes such as
         // surface normal
         #[rustfmt::skip]
         let indices = [
@@ -170,6 +177,17 @@ impl App {
                 ..Default::default()
             },
         );
+        // let voxels = bresenham(Voxel::ZERO, Voxel::new(10, 5, 3));
+
+        let terrain_config = TerrainConfig {
+            sample_rate: 0.04,
+            width: 200,
+            height: 20,
+            depth: 200,
+            max_height: 20.,
+            noise: Perlin::new(555),
+        };
+
         let mut app = Self {
             #[cfg(feature = "egui")]
             egui_mq: egui_miniquad::EguiMq::new(&mut *ctx),
@@ -177,11 +195,13 @@ impl App {
             aspect_ratio: 1.0,
             fov_y_radians: 1.0,
             pipeline,
+            frame_times: AllocRingBuffer::new(10),
+            terrain: generate_terrain(&terrain_config),
+            terrain_config,
             prev_update: 0.0,
             prev_draw: 0.0,
             fps_history: AllocRingBuffer::new(256),
             view_fps_graph: false,
-            ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, Perlin::new(555)),
             cube: (bindings, indices.len() as i32),
             sun_direction: Vec3::new(0.0, 1.0, 0.0),
             sun_color: Vec3::new(0.99, 0.72, 0.075),
@@ -191,8 +211,9 @@ impl App {
             mouse_left_down: false,
             mouse_right_down: false,
             mouse_prev_pos: (0.0, 0.0),
-            movement: Movement::Flying {
+            movement: Movement::OnGround {
                 position: Vec3::ZERO,
+                velocity: Vec3::ZERO,
                 look_h: 0.0,
                 look_v: 0.0,
             },
@@ -234,6 +255,21 @@ impl App {
                 });
             });
 
+            egui::Window::new("Debug").show(egui_ctx, |ui| {
+                ui.add(
+                    egui::Slider::new(&mut self.terrain_config.sample_rate, (0.001)..=0.04)
+                        .clamp_to_range(true)
+                        .logarithmic(true),
+                );
+                if ui.button("Regenerate Terrain").clicked() {
+                    self.terrain = generate_terrain(&self.terrain_config)
+                }
+
+                ui.label(format!(
+                    "Average frame time: {:.2} ms",
+                    self.frame_times.iter().sum::<f32>() / self.frame_times.len() as f32
+                ));
+            });
             Window::new("FPS")
                 .collapsible(false)
                 .open(&mut self.view_fps_graph)
@@ -263,7 +299,7 @@ impl App {
     fn draw_ground(&mut self, projection: Mat4, camera: Mat4) {
         self.ctx.buffer_update(
             self.cube.0.vertex_buffers[1],
-            BufferSource::slice(&self.ground),
+            BufferSource::slice(&self.terrain.ground),
         );
         self.ctx
             .apply_uniforms(UniformsSource::table(&shader::Uniforms {
@@ -273,7 +309,25 @@ impl App {
                 sun_direction: self.sun_direction,
                 sun_color: self.sun_color,
             }));
-        self.ctx.draw(0, self.cube.1, self.ground.len() as i32);
+        self.ctx
+            .draw(0, self.cube.1, self.terrain.ground.len() as i32);
+    }
+
+    fn draw_spawn_points(&mut self, projection: Mat4, camera: Mat4) {
+        self.ctx.buffer_update(
+            self.cube.0.vertex_buffers[1],
+            BufferSource::slice(&self.terrain.spawn_points),
+        );
+        self.ctx
+            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                proj_matrix: projection,
+                model_matrix: camera,
+                camera_matrix: camera,
+                sun_direction: self.sun_direction,
+                sun_color: self.sun_color,
+            }));
+        self.ctx
+            .draw(0, self.cube.1, self.terrain.spawn_points.len() as i32);
     }
 
     fn draw_objects(&mut self, projection: Mat4, camera: Mat4) {
@@ -324,6 +378,33 @@ impl App {
     }
 }
 
+fn trackball_camera_matrix() -> Mat4 {
+    let scale = 50.0;
+    Mat4::look_at_rh(
+        scale * Vec3::new(0.0, 0.0, 5.0),
+        scale * Vec3::ZERO,
+        Vec3::Y,
+    )
+}
+
+fn trackball_control(camera_matrix: Mat4, screen_pos: (f32, f32), prev_pos: (f32, f32)) -> Mat4 {
+    let axis = Vec3::new(screen_pos.1 - prev_pos.1, prev_pos.0 - screen_pos.0, 0.0);
+    let axis = Mat3::from_mat4(camera_matrix).inverse() * axis;
+    arb_rotate(axis, axis.length() / 50.0)
+}
+
+fn flying_camera_matrix(position: Vec3, angle_x: f32, angle_y: f32) -> Mat4 {
+    Mat4::look_at_rh(
+        position,
+        position
+            + (Mat4::from_quat(
+                (Quat::from_rotation_y(angle_y) * Quat::from_rotation_x(angle_x)).normalize(),
+            ) * Vec4::Z)
+                .truncate(),
+        Vec3::Y,
+    )
+}
+
 impl EventHandler for App {
     fn update(&mut self) {
         let now = date::now();
@@ -365,7 +446,53 @@ impl EventHandler for App {
                         (Quat::from_rotation_y(*look_h) * Quat::from_rotation_x(*look_v))
                             .normalize(),
                     );
-                    *position += (rot_mat * movement_vector.normalize()).truncate() * delta;
+                    *position += (rot_mat * movement_vector.normalize()).truncate() * delta * 10.;
+                }
+            }
+            Movement::OnGround {
+                position,
+                velocity,
+                look_h,
+                look_v: _,
+            } => {
+                let mut movement_vector = Vec4::ZERO;
+                if self.keys_down.get(&KeyCode::W).copied().unwrap_or(false) {
+                    movement_vector += Vec4::Z;
+                }
+                if self.keys_down.get(&KeyCode::S).copied().unwrap_or(false) {
+                    movement_vector += -Vec4::Z;
+                }
+                if self.keys_down.get(&KeyCode::A).copied().unwrap_or(false) {
+                    movement_vector += Vec4::X;
+                }
+                if self.keys_down.get(&KeyCode::D).copied().unwrap_or(false) {
+                    movement_vector += -Vec4::X;
+                }
+                if movement_vector.length_squared() != 0.0 {
+                    let rot_mat = Mat4::from_quat(Quat::from_rotation_y(*look_h).normalize());
+                    *position += (rot_mat * movement_vector.normalize()).truncate() * delta * 10.0;
+                }
+
+                let height_at_p = self.terrain_config.sample(position.x, position.z) + 2.0;
+
+                let mut on_ground = position.y <= height_at_p;
+                if on_ground
+                    && self
+                        .keys_down
+                        .get(&KeyCode::Space)
+                        .copied()
+                        .unwrap_or(false)
+                {
+                    velocity.y = 5.0;
+                    on_ground = false;
+                }
+
+                if on_ground {
+                    *velocity = Vec3::ZERO;
+                    position.y = height_at_p;
+                } else {
+                    velocity.y -= 20.0 * delta; // gravity
+                    *position += delta * *velocity;
                 }
             }
         }
@@ -392,9 +519,10 @@ impl EventHandler for App {
         let camera = self.movement.camera_matrix();
 
         self.ctx.apply_bindings(&self.cube.0);
-        // self.draw_ground(projection, camera);
+        self.draw_ground(projection, camera);
         self.draw_objects(projection, camera);
         self.draw_voxels(projection, camera);
+        self.draw_spawn_points(projection, camera);
 
         self.ctx.end_render_pass();
 
@@ -423,6 +551,12 @@ impl EventHandler for App {
                 position: _,
                 look_h,
                 look_v,
+            }
+            | Movement::OnGround {
+                position: _,
+                velocity: _,
+                look_h,
+                look_v,
             } => {
                 *look_h += (self.mouse_prev_pos.0 - x) / 100.0;
                 *look_v -= (self.mouse_prev_pos.1 - y) / 100.0;
@@ -448,6 +582,7 @@ impl EventHandler for App {
                 *down_pos = (x, y);
             }
             Movement::Flying { .. } => {}
+            Movement::OnGround { .. } => {}
         }
         match mb {
             miniquad::MouseButton::Left => self.mouse_left_down = true,

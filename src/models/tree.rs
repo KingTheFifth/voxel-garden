@@ -1,8 +1,9 @@
 use glam::{Quat, Vec3};
 
 use crate::models::primitives::{circle, sphere};
+use crate::models::Model;
 use crate::utils::{BROWN, GREEN};
-use crate::{InstanceData, Model, Point};
+use crate::{InstanceData, Point};
 
 pub fn tree(_seed: u64) -> Vec<Model> {
     let mut trunk = vec![];
