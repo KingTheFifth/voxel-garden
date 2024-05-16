@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::mem::size_of;
 
-use glam::{IVec3, Mat4, Quat, Vec3, Vec4};
+use glam::{IVec2, IVec3, Mat4, Quat, Vec3, Vec4};
 use miniquad::{
     conf, date, window, Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, Comparison,
     CullFace, EventHandler, KeyCode, PassAction, Pipeline, PipelineParams, RenderingBackend,
@@ -36,7 +36,7 @@ struct App {
     fps_history: AllocRingBuffer<f32>,
     view_fps_graph: bool,
 
-    ground: Vec<InstanceData>,
+    ground: HashMap<IVec2, Vec<InstanceData>>,
     objects: Vec<Object>,
     voxels: Vec<Voxel>,
 
@@ -108,10 +108,10 @@ impl App {
             BufferSource::slice(&vertices),
         );
 
-        // Flat shading uses the attributes of the last vertex of a triangle 
+        // Flat shading uses the attributes of the last vertex of a triangle
         // for every fragment in it
-        // By making sure that both triangles for a side of a voxel shares the 
-        // same last vertex, the entire side gets the same attributes such as 
+        // By making sure that both triangles for a side of a voxel shares the
+        // same last vertex, the entire side gets the same attributes such as
         // surface normal
         #[rustfmt::skip]
         let indices = [
@@ -181,7 +181,8 @@ impl App {
             prev_draw: 0.0,
             fps_history: AllocRingBuffer::new(256),
             view_fps_graph: false,
-            ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, Perlin::new(555)),
+            // ground: generate_terrain(-50, -50, 200, 20, 200, 0.013, 20.0, Perlin::new(555)),
+            ground: HashMap::new(),
             cube: (bindings, indices.len() as i32),
             sun_direction: Vec3::new(0.0, 1.0, 0.0),
             sun_color: Vec3::new(0.99, 0.72, 0.075),
@@ -192,10 +193,14 @@ impl App {
             mouse_right_down: false,
             mouse_prev_pos: (0.0, 0.0),
             movement: Movement::Flying {
-                position: Vec3::ZERO,
+                position: Vec3::Y * 10.0,
                 look_h: 0.0,
                 look_v: 0.0,
             },
+            // movement: Movement::Trackball {
+            //     down_pos: (0.0, 0.0),
+            //     matrix: Mat4::IDENTITY,
+            // },
         };
         app.resize_event(window_width, window_height);
         app
@@ -260,20 +265,43 @@ impl App {
         self.egui_mq.draw(&mut *self.ctx);
     }
 
-    fn draw_ground(&mut self, projection: Mat4, camera: Mat4) {
-        self.ctx.buffer_update(
-            self.cube.0.vertex_buffers[1],
-            BufferSource::slice(&self.ground),
-        );
-        self.ctx
-            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                proj_matrix: projection,
-                model_matrix: camera,
-                camera_matrix: camera,
-                sun_direction: self.sun_direction,
-                sun_color: self.sun_color,
-            }));
-        self.ctx.draw(0, self.cube.1, self.ground.len() as i32);
+    fn generate_chunk(chunk: IVec2) -> Vec<InstanceData> {
+        generate_terrain(
+            chunk.x * 8,
+            chunk.y * 8,
+            8,
+            20,
+            8,
+            0.013,
+            20.0,
+            Perlin::new(555),
+        )
+    }
+
+    fn draw_ground(&mut self, projection: Mat4, camera: Mat4, camera_position: IVec2) {
+        let camera_chunk = IVec2::new(camera_position.x / 8, camera_position.y / 8);
+        for dy in -8..=8 {
+            for dx in -8..=8 {
+                let d_chunk = IVec2::new(dx, dy);
+                let chunk_data = self
+                    .ground
+                    .entry(camera_chunk + d_chunk)
+                    .or_insert_with(|| Self::generate_chunk(camera_chunk + d_chunk));
+                self.ctx.buffer_update(
+                    self.cube.0.vertex_buffers[1],
+                    BufferSource::slice(chunk_data),
+                );
+                self.ctx
+                    .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                        proj_matrix: projection,
+                        model_matrix: camera,
+                        camera_matrix: camera,
+                        sun_direction: self.sun_direction,
+                        sun_color: self.sun_color,
+                    }));
+                self.ctx.draw(0, self.cube.1, chunk_data.len() as i32);
+            }
+        }
     }
 
     fn draw_objects(&mut self, projection: Mat4, camera: Mat4) {
@@ -365,7 +393,7 @@ impl EventHandler for App {
                         (Quat::from_rotation_y(*look_h) * Quat::from_rotation_x(*look_v))
                             .normalize(),
                     );
-                    *position += (rot_mat * movement_vector.normalize()).truncate() * delta;
+                    *position += (rot_mat * movement_vector.normalize()).truncate() * delta * 10.0;
                 }
             }
         }
@@ -391,8 +419,15 @@ impl EventHandler for App {
             Mat4::perspective_rh_gl(self.fov_y_radians, self.aspect_ratio, 0.1, 1000.0);
         let camera = self.movement.camera_matrix();
 
+        let camera_position_2d = match self.movement {
+            Movement::Trackball { .. } => IVec2::new(0, 0),
+            Movement::Flying { position, .. } => {
+                IVec2::new(position.x.trunc() as i32, position.z.trunc() as i32)
+            }
+        };
+
         self.ctx.apply_bindings(&self.cube.0);
-        // self.draw_ground(projection, camera);
+        self.draw_ground(projection, camera, camera_position_2d);
         self.draw_objects(projection, camera);
         self.draw_voxels(projection, camera);
 
@@ -424,8 +459,8 @@ impl EventHandler for App {
                 look_h,
                 look_v,
             } => {
-                *look_h += (self.mouse_prev_pos.0 - x) / 100.0;
-                *look_v -= (self.mouse_prev_pos.1 - y) / 100.0;
+                *look_h += (self.mouse_prev_pos.0 - x) / 50.0;
+                *look_v -= (self.mouse_prev_pos.1 - y) / 50.0;
             }
         }
         self.mouse_prev_pos = (x, y);
