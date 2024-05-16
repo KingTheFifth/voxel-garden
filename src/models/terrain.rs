@@ -46,7 +46,7 @@ pub fn generate_terrain(config: &TerrainConfig) -> GenerationPositions {
 
     for z in 0..depth {
         for x in 0..width {
-            let current_height = config.sample(x as f32, z as f32);
+            let current_height = config.sample(x as f32, z as f32).trunc();
 
             // Generate instance data for ground voxels
             let color = Vec4::new(0.1, 0.5, 0.2, 1.0);
