@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::mem::size_of;
 
-use glam::{IVec3, Mat3, Mat4, Quat, Vec3, Vec4};
+use glam::{IVec3, Mat4, Quat, Vec3, Vec4};
 use miniquad::{
     conf, date, window, Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, Comparison,
     CullFace, EventHandler, KeyCode, PassAction, Pipeline, PipelineParams, RenderingBackend,
@@ -13,9 +13,8 @@ use models::tree::tree;
 use noise::Perlin;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
-use crate::camera::Movement;
+use crate::camera::{trackball_control, Movement};
 use crate::models::Object;
-use crate::utils::arb_rotate;
 
 mod camera;
 mod models;
@@ -376,12 +375,6 @@ impl App {
             }));
         self.ctx.draw(0, self.cube.1, data.len() as i32);
     }
-}
-
-fn trackball_control(camera_matrix: Mat4, screen_pos: (f32, f32), prev_pos: (f32, f32)) -> Mat4 {
-    let axis = Vec3::new(screen_pos.1 - prev_pos.1, prev_pos.0 - screen_pos.0, 0.0);
-    let axis = Mat3::from_mat4(camera_matrix).inverse() * axis;
-    arb_rotate(axis, axis.length() / 50.0)
 }
 
 impl EventHandler for App {
