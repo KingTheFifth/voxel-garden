@@ -5,7 +5,7 @@ use crate::models::Model;
 use crate::utils::{BROWN, GREEN};
 use crate::{InstanceData, Point};
 
-pub fn tree(_seed: u64) -> Vec<Model> {
+pub fn tree(_seed: u64, translation: Vec3) -> Vec<Model> {
     let mut trunk = vec![];
     for y in 0..40 {
         trunk.extend(
@@ -20,7 +20,7 @@ pub fn tree(_seed: u64) -> Vec<Model> {
     let trunk = Model {
         points: trunk,
         rotation: Quat::IDENTITY,
-        translation: Vec3::ZERO,
+        translation,
     };
 
     let shrub = Model {
@@ -32,7 +32,7 @@ pub fn tree(_seed: u64) -> Vec<Model> {
             })
             .collect(),
         rotation: Quat::IDENTITY,
-        translation: Vec3::ZERO,
+        translation,
     };
 
     vec![trunk, shrub]
