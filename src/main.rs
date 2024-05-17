@@ -304,18 +304,20 @@ impl App {
         projection: Mat4,
         camera: Mat4,
         camera_position: IVec2,
-        camera_look_h: f32,
+        camera_look_h: Option<f32>,
     ) {
         let camera_chunk = IVec2::new(camera_position.x / 8, camera_position.y / 8);
         for dy in -self.render_distance..=self.render_distance {
             for dx in -self.render_distance..=self.render_distance {
-                let (vs, vc) = camera_look_h.sin_cos();
-                let look_v = Vec2::new(vs, vc).normalize();
-                if {
-                    let d_chunk = Vec2::new(dx as f32, dy as f32);
-                    look_v.dot(d_chunk) < 0.0
-                } {
-                    continue;
+                if let Some(camera_look_h) = camera_look_h {
+                    let (vs, vc) = camera_look_h.sin_cos();
+                    let look_v = Vec2::new(vs, vc).normalize();
+                    if {
+                        let d_chunk = Vec2::new(dx as f32, dy as f32);
+                        look_v.dot(d_chunk) < 0.0
+                    } {
+                        continue;
+                    }
                 }
                 let d_chunk = IVec2::new(dx, dy);
                 let chunk_data = self
@@ -526,8 +528,8 @@ impl EventHandler for App {
             }
         };
         let camera_look_h = match self.movement {
-            Movement::Trackball { .. } => 0.0,
-            Movement::Flying { look_h, .. } | Movement::OnGround { look_h, .. } => look_h,
+            Movement::Trackball { .. } => None,
+            Movement::Flying { look_h, .. } | Movement::OnGround { look_h, .. } => Some(look_h),
         };
 
         self.ctx.apply_bindings(&self.cube.0);
