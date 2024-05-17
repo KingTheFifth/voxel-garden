@@ -105,7 +105,7 @@ pub fn generate_terrain(x: i32, z: i32, config: &TerrainConfig) -> GenerationPos
                 );
                 spawn_points.push(SpawnPoint::new(instance_data, SpawnType::Flower));
 
-                let flower = flower(0, position.x, position.y + 1., position.z);
+                let flower = flower(0, Vec3::new(position.x, position.y + 1., position.z));
                 flowers.push(flower);
             }
         }
