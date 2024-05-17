@@ -33,8 +33,8 @@ impl TerrainConfig {
 }
 
 pub struct SpawnPoint {
-    instance_data: InstanceData,
-    spawn_type: SpawnType,
+    pub instance_data: InstanceData,
+    pub spawn_type: SpawnType,
 }
 
 impl SpawnPoint {

@@ -296,7 +296,7 @@ impl App {
         generate_terrain(chunk.x * 8, chunk.y * 8, terrain_config)
     }
 
-    fn draw_ground(&mut self, projection: Mat4, camera: Mat4, camera_position: IVec2) {
+    fn draw_chunk(&mut self, projection: Mat4, camera: Mat4, camera_position: IVec2) {
         let camera_chunk = IVec2::new(camera_position.x / 8, camera_position.y / 8);
         for dy in -8..=8 {
             for dx in -8..=8 {
@@ -307,6 +307,14 @@ impl App {
                     .or_insert_with(|| {
                         Self::generate_chunk(&self.terrain_config, camera_chunk + d_chunk)
                     });
+
+                let spawn_point_instance_data: Vec<_> = chunk_data
+                    .spawn_points
+                    .iter()
+                    .map(|sp| sp.instance_data)
+                    .collect();
+
+                // Draw ground
                 self.ctx.buffer_update(
                     self.cube.0.vertex_buffers[1],
                     BufferSource::slice(&chunk_data.ground),
@@ -321,44 +329,18 @@ impl App {
                     }));
                 self.ctx
                     .draw(0, self.cube.1, chunk_data.ground.len() as i32);
-            }
-        }
-    }
 
-    fn draw_spawn_points(&mut self, projection: Mat4, camera: Mat4, camera_position: IVec2) {
-        let camera_chunk = IVec2::new(camera_position.x / 8, camera_position.y / 8);
-        for dy in -8..=8 {
-            for dx in -8..=8 {
-                let d_chunk = IVec2::new(dx, dy);
-                let chunk_data = self
-                    .terrain
-                    .entry(camera_chunk + d_chunk)
-                    .or_insert_with(|| {
-                        Self::generate_chunk(&self.terrain_config, camera_chunk + d_chunk)
-                    });
+                // draw spawn points
+                // dont need to apply uniforms since spawn points
+                // can be treated as ground voxels
                 self.ctx.buffer_update(
                     self.cube.0.vertex_buffers[1],
-                    BufferSource::slice(&chunk_data.spawn_points),
+                    BufferSource::slice(&spawn_point_instance_data),
                 );
                 self.ctx
-                    .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                        proj_matrix: projection,
-                        model_matrix: camera,  // world-to-view??
-                        camera_matrix: camera, // model-to-world??
-                        sun_direction: self.sun_direction,
-                        sun_color: self.sun_color,
-                    }));
-                self.ctx
                     .draw(0, self.cube.1, chunk_data.spawn_points.len() as i32);
-            }
-        }
-    }
 
-    fn draw_objects(&mut self, projection: Mat4, camera: Mat4, camera_position: IVec2) {
-        let camera_chunk = IVec2::new(camera_position.x / 8, camera_position.y / 8);
-        for dy in -8..=8 {
-            for dx in -8..=8 {
-                let d_chunk = IVec2::new(dx, dy);
+                // draw models
                 let models = self
                     .terrain
                     .entry(camera_chunk + d_chunk)
@@ -390,34 +372,6 @@ impl App {
                 }
             }
         }
-    }
-
-    fn draw_voxels(&mut self, projection: Mat4, camera: Mat4) {
-        let data: Vec<_> = self
-            .voxels
-            .iter()
-            .copied()
-            .map(
-                |Voxel {
-                     position: Point { x, y, z },
-                     color,
-                 }| InstanceData {
-                    position: Vec3::new(x as f32, y as f32, z as f32),
-                    color,
-                },
-            )
-            .collect();
-        self.ctx
-            .buffer_update(self.cube.0.vertex_buffers[1], BufferSource::slice(&data));
-        self.ctx
-            .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                proj_matrix: projection,
-                model_matrix: camera,
-                camera_matrix: camera,
-                sun_color: self.sun_color,
-                sun_direction: self.sun_direction,
-            }));
-        self.ctx.draw(0, self.cube.1, data.len() as i32);
     }
 }
 
@@ -542,10 +496,8 @@ impl EventHandler for App {
         };
 
         self.ctx.apply_bindings(&self.cube.0);
-        self.draw_ground(projection, camera, camera_position_2d);
-        self.draw_objects(projection, camera, camera_position_2d);
-        self.draw_voxels(projection, camera);
-        self.draw_spawn_points(projection, camera, camera_position_2d);
+        self.draw_chunk(projection, camera, camera_position_2d);
+        //self.draw_voxels(projection, camera); Use this when?
 
         self.ctx.end_render_pass();
 
