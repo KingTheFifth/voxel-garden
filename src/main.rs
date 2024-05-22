@@ -7,6 +7,7 @@ use miniquad::{
     CullFace, EventHandler, KeyCode, PassAction, Pipeline, PipelineParams, RenderingBackend,
     ShaderSource, UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
+use models::biomes::BiomeConfig;
 use models::terrain::{generate_terrain, GenerationPositions, TerrainConfig};
 use noise::Perlin;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
@@ -39,6 +40,7 @@ struct App {
     view_fps_graph: bool,
 
     // This is per-chunk
+    biome_config: BiomeConfig,
     terrain_config: TerrainConfig,
     terrain: HashMap<IVec2, GenerationPositions>,
     voxels: Vec<Voxel>,
@@ -185,6 +187,12 @@ impl App {
             noise: Perlin::new(555),
         };
 
+        let biome_config = BiomeConfig {
+            biome_sample_rate: 0.001,
+            plant_sample_rate: 0.3,
+            noise: Perlin::new(666),
+        };
+
         let mut app = Self {
             #[cfg(feature = "egui")]
             egui_mq: egui_miniquad::EguiMq::new(&mut *ctx),
@@ -193,6 +201,7 @@ impl App {
             fov_y_radians: 1.0,
             pipeline,
             frame_times: AllocRingBuffer::new(10),
+            biome_config,
             terrain_config,
             prev_update: 0.0,
             prev_draw: 0.0,
@@ -295,8 +304,12 @@ impl App {
         self.egui_mq.draw(&mut *self.ctx);
     }
 
-    fn generate_chunk(terrain_config: &TerrainConfig, chunk: IVec2) -> GenerationPositions {
-        generate_terrain(chunk.x * 8, chunk.y * 8, terrain_config)
+    fn generate_chunk(
+        biome_config: &BiomeConfig,
+        terrain_config: &TerrainConfig,
+        chunk: IVec2,
+    ) -> GenerationPositions {
+        generate_terrain(chunk.x * 8, chunk.y * 8, terrain_config, biome_config)
     }
 
     fn draw_chunk(
@@ -324,7 +337,11 @@ impl App {
                     .terrain
                     .entry(camera_chunk + d_chunk)
                     .or_insert_with(|| {
-                        Self::generate_chunk(&self.terrain_config, camera_chunk + d_chunk)
+                        Self::generate_chunk(
+                            &self.biome_config,
+                            &self.terrain_config,
+                            camera_chunk + d_chunk,
+                        )
                     });
 
                 let spawn_point_instance_data: Vec<_> = chunk_data
@@ -364,7 +381,11 @@ impl App {
                     .terrain
                     .entry(camera_chunk + d_chunk)
                     .or_insert_with(|| {
-                        Self::generate_chunk(&self.terrain_config, camera_chunk + d_chunk)
+                        Self::generate_chunk(
+                            &self.biome_config,
+                            &self.terrain_config,
+                            camera_chunk + d_chunk,
+                        )
                     })
                     .objects
                     .iter()
