@@ -4,6 +4,7 @@ use glam::{Quat, Vec3};
 
 use crate::InstanceData;
 
+pub mod biomes;
 pub mod flower;
 pub mod primitives;
 pub mod terrain;
