@@ -7,7 +7,7 @@ use miniquad::{
     CullFace, EventHandler, KeyCode, PassAction, Pipeline, PipelineParams, RenderingBackend,
     ShaderSource, UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
-use models::terrain::{generate_terrain, TerrainConfig};
+use models::terrain::{generate_terrain, GenerationPositions, TerrainConfig};
 use noise::Perlin;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
@@ -40,7 +40,7 @@ struct App {
 
     // This is per-chunk
     terrain_config: TerrainConfig,
-    terrain: HashMap<IVec2, Vec<InstanceData>>,
+    terrain: HashMap<IVec2, GenerationPositions>,
     voxels: Vec<Voxel>,
 
     sun_direction: Vec3,
@@ -295,11 +295,11 @@ impl App {
         self.egui_mq.draw(&mut *self.ctx);
     }
 
-    fn generate_chunk(terrain_config: &TerrainConfig, chunk: IVec2) -> Vec<InstanceData> {
-        generate_terrain(chunk.x * 8, chunk.y * 8, terrain_config).ground
+    fn generate_chunk(terrain_config: &TerrainConfig, chunk: IVec2) -> GenerationPositions {
+        generate_terrain(chunk.x * 8, chunk.y * 8, terrain_config)
     }
 
-    fn draw_ground(
+    fn draw_chunk(
         &mut self,
         projection: Mat4,
         camera: Mat4,
@@ -326,9 +326,17 @@ impl App {
                     .or_insert_with(|| {
                         Self::generate_chunk(&self.terrain_config, camera_chunk + d_chunk)
                     });
+
+                let spawn_point_instance_data: Vec<_> = chunk_data
+                    .spawn_points
+                    .iter()
+                    .map(|sp| sp.instance_data)
+                    .collect();
+
+                // Draw ground
                 self.ctx.buffer_update(
                     self.cube.0.vertex_buffers[1],
-                    BufferSource::slice(chunk_data),
+                    BufferSource::slice(&chunk_data.ground),
                 );
                 self.ctx
                     .apply_uniforms(UniformsSource::table(&shader::Uniforms {
@@ -338,73 +346,51 @@ impl App {
                         sun_direction: self.sun_direction,
                         sun_color: self.sun_color,
                     }));
-                self.ctx.draw(0, self.cube.1, chunk_data.len() as i32);
+                self.ctx
+                    .draw(0, self.cube.1, chunk_data.ground.len() as i32);
+
+                // draw spawn points
+                // dont need to apply uniforms since spawn points
+                // can be treated as ground voxels
+                self.ctx.buffer_update(
+                    self.cube.0.vertex_buffers[1],
+                    BufferSource::slice(&spawn_point_instance_data),
+                );
+                self.ctx
+                    .draw(0, self.cube.1, chunk_data.spawn_points.len() as i32);
+
+                // draw models
+                let models = self
+                    .terrain
+                    .entry(camera_chunk + d_chunk)
+                    .or_insert_with(|| {
+                        Self::generate_chunk(&self.terrain_config, camera_chunk + d_chunk)
+                    })
+                    .objects
+                    .iter()
+                    .flatten();
+
+                for model in models {
+                    self.ctx.buffer_update(
+                        self.cube.0.vertex_buffers[1],
+                        BufferSource::slice(&model.points),
+                    );
+                    self.ctx
+                        .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                            proj_matrix: projection,
+                            model_matrix: camera
+                                * Mat4::from_rotation_translation(
+                                    model.rotation,
+                                    model.translation,
+                                ),
+                            camera_matrix: camera,
+                            sun_direction: self.sun_direction,
+                            sun_color: self.sun_color,
+                        }));
+                    self.ctx.draw(0, self.cube.1, model.points.len() as i32);
+                }
             }
         }
-    }
-
-    fn draw_spawn_points(&mut self, projection: Mat4, camera: Mat4) {
-        // self.ctx.buffer_update(
-        //     self.cube.0.vertex_buffers[1],
-        //     BufferSource::slice(&self.spawn_points),
-        // );
-        // self.ctx
-        //     .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-        //         proj_matrix: projection,
-        //         model_matrix: camera,
-        //         camera_matrix: camera,
-        //         sun_direction: self.sun_direction,
-        //         sun_color: self.sun_color,
-        //     }));
-        // self.ctx
-        //     .draw(0, self.cube.1, self.terrain.spawn_points.len() as i32);
-    }
-
-    fn draw_objects(&mut self, projection: Mat4, camera: Mat4) {
-        // for model in self.objects.iter().flat_map(|obj| &obj.models) {
-        //     self.ctx.buffer_update(
-        //         self.cube.0.vertex_buffers[1],
-        //         BufferSource::slice(&model.points),
-        //     );
-        //     self.ctx
-        //         .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-        //             proj_matrix: projection,
-        //             model_matrix: camera
-        //                 * Mat4::from_rotation_translation(model.rotation, model.translation),
-        //             camera_matrix: camera,
-        //             sun_direction: self.sun_direction,
-        //             sun_color: self.sun_color,
-        //         }));
-        //     self.ctx.draw(0, self.cube.1, model.points.len() as i32);
-        // }
-    }
-
-    fn draw_voxels(&mut self, projection: Mat4, camera: Mat4) {
-        // let data: Vec<_> = self
-        //     .voxels
-        //     .iter()
-        //     .copied()
-        //     .map(
-        //         |Voxel {
-        //              position: Point { x, y, z },
-        //              color,
-        //          }| InstanceData {
-        //             position: Vec3::new(x as f32, y as f32, z as f32),
-        //             color,
-        //         },
-        //     )
-        //     .collect();
-        // self.ctx
-        //     .buffer_update(self.cube.0.vertex_buffers[1], BufferSource::slice(&data));
-        // self.ctx
-        //     .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-        //         proj_matrix: projection,
-        //         model_matrix: camera,
-        //         camera_matrix: camera,
-        //         sun_color: self.sun_color,
-        //         sun_direction: self.sun_direction,
-        //     }));
-        // self.ctx.draw(0, self.cube.1, data.len() as i32);
     }
 }
 
@@ -538,10 +524,8 @@ impl EventHandler for App {
         };
 
         self.ctx.apply_bindings(&self.cube.0);
-        self.draw_ground(projection, camera, camera_position_2d, camera_look_h);
-        // self.draw_objects(projection, camera);
-        // self.draw_voxels(projection, camera);
-        // self.draw_spawn_points(projection, camera);
+        self.draw_chunk(projection, camera, camera_position_2d, camera_look_h);
+        //self.draw_voxels(projection, camera); Use this when?
 
         self.ctx.end_render_pass();
 
