@@ -30,8 +30,8 @@ impl Biome {
             Biome::Forest => vec![
                 BiomeSpawnData {
                     spawn_type: SpawnType::Tree,
-                    spawn_rate: 0.01,
-                    group_spawn_rate: 0.4,
+                    spawn_rate: 0.0001,
+                    group_spawn_rate: 0.33,
                 },
                 BiomeSpawnData {
                     spawn_type: SpawnType::Flower,
