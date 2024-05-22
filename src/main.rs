@@ -213,7 +213,7 @@ impl App {
                 look_h: 0.0,
                 look_v: 0.0,
             },
-            render_distance: 32,
+            render_distance: 8,
             // movement: Movement::Trackball {
             //     down_pos: (0.0, 0.0),
             //     matrix: Mat4::IDENTITY,

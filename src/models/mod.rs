@@ -10,6 +10,7 @@ pub mod terrain;
 pub mod tree;
 
 pub use flower::flower;
+pub use flower::flower_blue;
 pub use terrain::generate_terrain;
 pub use tree::tree;
 
