@@ -1,10 +1,11 @@
-use crate::models::flower;
-use crate::models::Model;
-use crate::utils::RED;
-use crate::InstanceData;
 use glam::{Vec3, Vec4};
 use noise::{NoiseFn, Perlin};
 use rand::prelude::*;
+
+use crate::models::flower::proc_gen_flower;
+use crate::models::Model;
+use crate::utils::RED;
+use crate::InstanceData;
 
 type Object = Vec<Model>;
 
@@ -105,7 +106,7 @@ pub fn generate_terrain(x: i32, z: i32, config: &TerrainConfig) -> GenerationPos
                 );
                 spawn_points.push(SpawnPoint::new(instance_data, SpawnType::Flower));
 
-                let flower = flower(0, Vec3::new(position.x, position.y + 1., position.z));
+                let flower = proc_gen_flower(0, Vec3::new(position.x, position.y + 1., position.z));
                 flowers.push(flower);
             }
         }
