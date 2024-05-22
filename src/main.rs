@@ -10,6 +10,7 @@ use miniquad::{
 use models::biomes::BiomeConfig;
 use models::terrain::{generate_terrain, GenerationPositions, TerrainConfig};
 use noise::Perlin;
+use rayon::iter::{IntoParallelIterator as _, IntoParallelRefIterator as _, ParallelIterator as _};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
 use crate::camera::{trackball_control, Movement};
@@ -223,7 +224,7 @@ impl App {
                 look_h: 0.0,
                 look_v: 0.0,
             },
-            render_distance: 8,
+            render_distance: 12,
             // movement: Movement::Trackball {
             //     down_pos: (0.0, 0.0),
             //     matrix: Mat4::IDENTITY,
@@ -335,7 +336,29 @@ impl App {
                 chunks.push((dx, dy));
             }
         }
-        chunks.into_iter().for_each(|(dx, dy)| {
+        // generate chunk data in parallel
+        let mut chunks_to_gen = Vec::new();
+        for (dx, dy) in &chunks {
+            let d_chunk = IVec2::new(*dx, *dy);
+            let chunk = camera_chunk + d_chunk;
+            if !self.terrain.contains_key(&chunk) {
+                chunks_to_gen.push(chunk);
+            }
+        }
+        let chunk_data: Vec<_> = chunks_to_gen
+            .into_par_iter()
+            .map(|chunk| {
+                (
+                    chunk,
+                    Self::generate_chunk(&self.biome_config, &self.terrain_config, chunk),
+                )
+            })
+            .collect();
+        for (chunk, data) in chunk_data {
+            self.terrain.insert(chunk, data);
+        }
+
+        chunks.iter().copied().for_each(|(dx, dy)| {
             if let Some(camera_look_h) = camera_look_h {
                 let (vs, vc) = camera_look_h.sin_cos();
                 let look_v = Vec2::new(vs, vc).normalize();
@@ -347,17 +370,7 @@ impl App {
                 }
             }
             let d_chunk = IVec2::new(dx, dy);
-            let chunk_data = self
-                .terrain
-                .entry(camera_chunk + d_chunk)
-                .or_insert_with(|| {
-                    Self::generate_chunk(
-                        &self.biome_config,
-                        &self.terrain_config,
-                        camera_chunk + d_chunk,
-                    )
-                });
-
+            let chunk_data = self.terrain.get(&(camera_chunk + d_chunk)).unwrap();
             let spawn_point_instance_data: Vec<_> = chunk_data
                 .spawn_points
                 .iter()
