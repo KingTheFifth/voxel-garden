@@ -1,6 +1,6 @@
 use crate::models::biomes::{Biome, BiomeConfig};
 use crate::models::flower::proc_gen_flower;
-use crate::models::Model;
+use crate::models::{tree, Model};
 use crate::utils::{BROWN, GREEN, RED};
 use crate::InstanceData;
 use glam::{Vec3, Vec4};
@@ -112,7 +112,10 @@ pub fn generate_terrain(
                             Vec3::new(position.x, position.y + 1., position.z),
                         )),
                     ),
-                    SpawnType::Tree => (BROWN, None),
+                    SpawnType::Tree => (
+                        BROWN,
+                        Some(tree(0, Vec3::new(position.x, position.y + 1.0, position.z))),
+                    ),
                     SpawnType::Cactus => (GREEN, None),
                 };
                 spawn_points.push(SpawnPoint::new(
