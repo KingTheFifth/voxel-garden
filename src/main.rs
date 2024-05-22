@@ -329,98 +329,99 @@ impl App {
             camera_position.x / CHUNK_SIZE,
             camera_position.y / CHUNK_SIZE,
         );
+        let mut chunks = Vec::new();
         for dy in -self.render_distance..=self.render_distance {
             for dx in -self.render_distance..=self.render_distance {
-                if let Some(camera_look_h) = camera_look_h {
-                    let (vs, vc) = camera_look_h.sin_cos();
-                    let look_v = Vec2::new(vs, vc).normalize();
-                    if {
-                        let d_chunk = Vec2::new(dx as f32, dy as f32);
-                        look_v.dot(d_chunk) < 0.0
-                    } {
-                        continue;
-                    }
+                chunks.push((dx, dy));
+            }
+        }
+        chunks.into_iter().for_each(|(dx, dy)| {
+            if let Some(camera_look_h) = camera_look_h {
+                let (vs, vc) = camera_look_h.sin_cos();
+                let look_v = Vec2::new(vs, vc).normalize();
+                if {
+                    let d_chunk = Vec2::new(dx as f32, dy as f32);
+                    look_v.dot(d_chunk) < 0.0
+                } {
+                    return;
                 }
-                let d_chunk = IVec2::new(dx, dy);
-                let chunk_data = self
-                    .terrain
-                    .entry(camera_chunk + d_chunk)
-                    .or_insert_with(|| {
-                        Self::generate_chunk(
-                            &self.biome_config,
-                            &self.terrain_config,
-                            camera_chunk + d_chunk,
-                        )
-                    });
+            }
+            let d_chunk = IVec2::new(dx, dy);
+            let chunk_data = self
+                .terrain
+                .entry(camera_chunk + d_chunk)
+                .or_insert_with(|| {
+                    Self::generate_chunk(
+                        &self.biome_config,
+                        &self.terrain_config,
+                        camera_chunk + d_chunk,
+                    )
+                });
 
-                let spawn_point_instance_data: Vec<_> = chunk_data
-                    .spawn_points
-                    .iter()
-                    .map(|sp| sp.instance_data)
-                    .collect();
+            let spawn_point_instance_data: Vec<_> = chunk_data
+                .spawn_points
+                .iter()
+                .map(|sp| sp.instance_data)
+                .collect();
 
-                // Draw ground
+            // Draw ground
+            self.ctx.buffer_update(
+                self.cube.0.vertex_buffers[1],
+                BufferSource::slice(&chunk_data.ground),
+            );
+            self.ctx
+                .apply_uniforms(UniformsSource::table(&shader::Uniforms {
+                    proj_matrix: projection,
+                    model_matrix: camera,
+                    camera_matrix: camera,
+                    sun_direction: self.sun_direction,
+                    sun_color: self.sun_color,
+                }));
+            self.ctx
+                .draw(0, self.cube.1, chunk_data.ground.len() as i32);
+
+            // draw spawn points
+            // dont need to apply uniforms since spawn points
+            // can be treated as ground voxels
+            self.ctx.buffer_update(
+                self.cube.0.vertex_buffers[1],
+                BufferSource::slice(&spawn_point_instance_data),
+            );
+            self.ctx
+                .draw(0, self.cube.1, chunk_data.spawn_points.len() as i32);
+
+            // draw models
+            let models = self
+                .terrain
+                .entry(camera_chunk + d_chunk)
+                .or_insert_with(|| {
+                    Self::generate_chunk(
+                        &self.biome_config,
+                        &self.terrain_config,
+                        camera_chunk + d_chunk,
+                    )
+                })
+                .objects
+                .iter()
+                .flatten();
+
+            for model in models {
                 self.ctx.buffer_update(
                     self.cube.0.vertex_buffers[1],
-                    BufferSource::slice(&chunk_data.ground),
+                    BufferSource::slice(&model.points),
                 );
                 self.ctx
                     .apply_uniforms(UniformsSource::table(&shader::Uniforms {
                         proj_matrix: projection,
-                        model_matrix: camera,
+                        model_matrix: camera
+                            * Mat4::from_rotation_translation(model.rotation, model.translation),
                         camera_matrix: camera,
                         sun_direction: self.sun_direction,
                         sun_color: self.sun_color,
                     }));
-                self.ctx
-                    .draw(0, self.cube.1, chunk_data.ground.len() as i32);
-
-                // draw spawn points
-                // dont need to apply uniforms since spawn points
-                // can be treated as ground voxels
-                self.ctx.buffer_update(
-                    self.cube.0.vertex_buffers[1],
-                    BufferSource::slice(&spawn_point_instance_data),
-                );
-                self.ctx
-                    .draw(0, self.cube.1, chunk_data.spawn_points.len() as i32);
-
-                // draw models
-                let models = self
-                    .terrain
-                    .entry(camera_chunk + d_chunk)
-                    .or_insert_with(|| {
-                        Self::generate_chunk(
-                            &self.biome_config,
-                            &self.terrain_config,
-                            camera_chunk + d_chunk,
-                        )
-                    })
-                    .objects
-                    .iter()
-                    .flatten();
-
-                for model in models {
-                    self.ctx.buffer_update(
-                        self.cube.0.vertex_buffers[1],
-                        BufferSource::slice(&model.points),
-                    );
-                    self.ctx
-                        .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                            proj_matrix: projection,
-                            model_matrix: camera
-                                * Mat4::from_rotation_translation(
-                                    model.rotation,
-                                    model.translation,
-                                ),
-                            camera_matrix: camera,
-                            sun_direction: self.sun_direction,
-                            sun_color: self.sun_color,
-                        }));
-                    self.ctx.draw(0, self.cube.1, model.points.len() as i32);
-                }
+                self.ctx.draw(0, self.cube.1, model.points.len() as i32);
             }
-        }
+        })
     }
 }
 
