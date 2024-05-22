@@ -1,8 +1,17 @@
+use crate::models::flower;
+use crate::models::Model;
 use crate::utils::RED;
 use crate::InstanceData;
 use glam::{Vec3, Vec4};
 use noise::{NoiseFn, Perlin};
 use rand::prelude::*;
+
+type Object = Vec<Model>;
+
+pub enum SpawnType {
+    Tree,
+    Flower,
+}
 
 #[derive(Clone)]
 pub struct TerrainConfig {
@@ -23,16 +32,45 @@ impl TerrainConfig {
     }
 }
 
+pub struct SpawnPoint {
+    pub instance_data: InstanceData,
+    pub spawn_type: SpawnType,
+}
+
+impl SpawnPoint {
+    pub fn new(instance_data: InstanceData, spawn_type: SpawnType) -> SpawnPoint {
+        SpawnPoint {
+            instance_data,
+            spawn_type,
+        }
+    }
+}
+
 pub struct GenerationPositions {
     pub ground: Vec<InstanceData>,
-    pub spawn_points: Vec<InstanceData>,
+    pub spawn_points: Vec<SpawnPoint>,
+    pub objects: Vec<Object>,
 }
 
 impl GenerationPositions {
-    fn new(ground: Vec<InstanceData>, spawn_points: Vec<InstanceData>) -> GenerationPositions {
+    fn new(ground: Vec<InstanceData>, spawn_points: Vec<SpawnPoint>) -> GenerationPositions {
+        let objects = Vec::new();
         GenerationPositions {
             ground,
             spawn_points,
+            objects,
+        }
+    }
+
+    fn new_with_object(
+        ground: Vec<InstanceData>,
+        spawn_points: Vec<SpawnPoint>,
+        objects: Vec<Object>,
+    ) -> GenerationPositions {
+        GenerationPositions {
+            ground,
+            spawn_points,
+            objects,
         }
     }
 }
@@ -40,9 +78,10 @@ impl GenerationPositions {
 pub fn generate_terrain(x: i32, z: i32, config: &TerrainConfig) -> GenerationPositions {
     let mut rng = rand::thread_rng();
     let mut instance_data = Vec::new();
-    let mut spawn_points: Vec<InstanceData> = Vec::new();
+    let mut spawn_points: Vec<SpawnPoint> = Vec::new();
     let depth = config.depth;
     let width = config.width;
+    let mut flowers: Vec<Object> = Vec::new();
 
     for z in z..z + depth {
         for x in x..x + width {
@@ -56,16 +95,21 @@ pub fn generate_terrain(x: i32, z: i32, config: &TerrainConfig) -> GenerationPos
             let rand: f64 = rng.gen();
             // Flower
             if rand < 0.05 {
-                spawn_points.push(InstanceData::new(
+                let instance_data = InstanceData::new(
                     Vec3::new(
                         position.x,
-                        position.y + 1., // We place thing on the ground, not in it
+                        position.y + 1., // We place thing on the ground, not in in
                         position.z,
                     ),
                     RED,
-                ));
+                );
+                spawn_points.push(SpawnPoint::new(instance_data, SpawnType::Flower));
+
+                let flower = flower(0, Vec3::new(position.x, position.y + 1., position.z));
+                flowers.push(flower);
             }
         }
     }
-    GenerationPositions::new(instance_data, spawn_points)
+    GenerationPositions::new_with_object(instance_data, spawn_points, flowers)
+    //GenerationPositions::new(instance_data, spawn_points)
 }
