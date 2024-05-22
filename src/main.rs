@@ -22,6 +22,7 @@ type Point = IVec3;
 type Color = Vec4;
 
 const MAX_INSTANCE_DATA: usize = size_of::<InstanceData>() * 100_000;
+const CHUNK_SIZE: i32 = 32;
 
 struct App {
     ctx: Box<dyn RenderingBackend>,
@@ -180,9 +181,9 @@ impl App {
 
         let terrain_config = TerrainConfig {
             sample_rate: 0.004,
-            width: 8,
+            width: CHUNK_SIZE,
             height: 20,
-            depth: 8,
+            depth: CHUNK_SIZE,
             max_height: 40.,
             noise: Perlin::new(555),
         };
@@ -269,7 +270,7 @@ impl App {
                 ui.horizontal(|ui| {
                     ui.label("render distance");
                     ui.add(
-                        egui::Slider::new(&mut self.render_distance, 1..=128).clamp_to_range(true),
+                        egui::Slider::new(&mut self.render_distance, 1..=32).clamp_to_range(true),
                     );
                 });
 
@@ -309,7 +310,12 @@ impl App {
         terrain_config: &TerrainConfig,
         chunk: IVec2,
     ) -> GenerationPositions {
-        generate_terrain(chunk.x * 8, chunk.y * 8, terrain_config, biome_config)
+        generate_terrain(
+            chunk.x * CHUNK_SIZE,
+            chunk.y * CHUNK_SIZE,
+            terrain_config,
+            biome_config,
+        )
     }
 
     fn draw_chunk(
@@ -319,7 +325,10 @@ impl App {
         camera_position: IVec2,
         camera_look_h: Option<f32>,
     ) {
-        let camera_chunk = IVec2::new(camera_position.x / 8, camera_position.y / 8);
+        let camera_chunk = IVec2::new(
+            camera_position.x / CHUNK_SIZE,
+            camera_position.y / CHUNK_SIZE,
+        );
         for dy in -self.render_distance..=self.render_distance {
             for dx in -self.render_distance..=self.render_distance {
                 if let Some(camera_look_h) = camera_look_h {
