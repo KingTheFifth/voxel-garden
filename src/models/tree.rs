@@ -7,9 +7,10 @@ use crate::{InstanceData, Point};
 
 pub fn tree(_seed: u64, translation: Vec3) -> Vec<Model> {
     let mut trunk = vec![];
-    for y in 0..40 {
+    let tree_height = 50;
+    for y in 0..tree_height {
         trunk.extend(
-            circle(Point::new(0, y, 0), 2.0)
+            circle(Point::new(0, y, 0), 4.0)
                 .into_iter()
                 .map(|Point { x, y, z }| InstanceData {
                     position: Vec3::new(x as f32, y as f32, z as f32),
@@ -24,7 +25,7 @@ pub fn tree(_seed: u64, translation: Vec3) -> Vec<Model> {
     };
 
     let shrub = Model {
-        points: sphere(Point::new(0, 40, 0), 10.0)
+        points: sphere(Point::new(0, tree_height, 0), 15.0)
             .into_iter()
             .map(|Point { x, y, z }| InstanceData {
                 position: Vec3::new(x as f32, y as f32, z as f32),

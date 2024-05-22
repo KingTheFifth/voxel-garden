@@ -492,7 +492,7 @@ impl EventHandler for App {
                     *position += (rot_mat * movement_vector.normalize()).truncate() * delta * 40.0;
                 }
 
-                let height_at_p = self.terrain_config.sample(position.x, position.z) + 50.0;
+                let height_at_p = self.terrain_config.sample(position.x, position.z) + 20.0;
 
                 let mut on_ground = position.y <= height_at_p;
                 if on_ground
