@@ -21,8 +21,8 @@ void main(void) {
     if (is_water != uint(0)) {
         float x_factor = 1 / (0.001*0.5);
         float z_factor = 1 / (0.0023 * 0.5);
-        float x = mod(in_inst_position.x, x_factor);
-        float z = mod(in_inst_position.z, z_factor);
+        float x = in_inst_position.x;
+        float z = in_inst_position.z;
         float x_square = x * x;
         float z_square = z * z;
         float amp = sin(time + x_square * 1/x_factor + z_square * 1/z_factor);
