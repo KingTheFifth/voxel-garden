@@ -24,6 +24,7 @@ pub fn rock(_seed: u64, translation: Vec3) -> Vec<Model> {
             |Point { x, y, z }| InstanceData {
                 position: Vec3::new(x as f32, y as f32, z as f32),
                 color: GREY,
+                is_water: 0,
             },
         ));
     }
@@ -31,7 +32,7 @@ pub fn rock(_seed: u64, translation: Vec3) -> Vec<Model> {
     let pebble = Model {
         points: rocks,
         rotation: Quat::IDENTITY,
-        translation: translation,
+        translation,
     };
     vec![pebble]
 }

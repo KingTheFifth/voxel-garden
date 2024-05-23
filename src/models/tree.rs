@@ -15,6 +15,7 @@ pub fn tree(_seed: u64, translation: Vec3) -> Vec<Model> {
                 .map(|Point { x, y, z }| InstanceData {
                     position: Vec3::new(x as f32, y as f32, z as f32),
                     color: BROWN,
+                    is_water: 0,
                 }),
         );
     }
@@ -30,6 +31,7 @@ pub fn tree(_seed: u64, translation: Vec3) -> Vec<Model> {
             .map(|Point { x, y, z }| InstanceData {
                 position: Vec3::new(x as f32, y as f32, z as f32),
                 color: GREEN,
+                is_water: 0,
             })
             .collect(),
         rotation: Quat::IDENTITY,
