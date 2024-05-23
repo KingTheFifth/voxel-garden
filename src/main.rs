@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::mem::size_of;
+use std::sync::{mpsc, Arc, Mutex};
 use std::{collections::HashMap, f32::consts::PI};
 
 use glam::{IVec2, IVec3, Mat4, Quat, Vec2, Vec3, Vec4};
@@ -20,6 +21,8 @@ mod models;
 mod utils;
 
 type Point = IVec3;
+type Color = Vec4;
+type Terrain = HashMap<IVec2, GenerationPositions>;
 
 const MAX_INSTANCE_DATA: usize = size_of::<InstanceData>() * 100_000;
 const CHUNK_SIZE: i32 = 32;
@@ -59,9 +62,11 @@ struct App {
     /// Whether to draw the FPS graph or not.
     view_fps_graph: bool,
 
-    biome_config: BiomeConfig,
+    // This is per-chunk
+    terrain: Arc<Mutex<Terrain>>,
     terrain_config: TerrainConfig,
-    terrain: HashMap<IVec2, GenerationPositions>,
+    terrain_chunk_gen_queue: mpsc::Sender<IVec2>,
+    terrain_chunk_waiting: HashSet<IVec2>,
 
     sun_direction: Vec3,
     sun_color: Vec3,
@@ -219,6 +224,22 @@ impl App {
             noise: Perlin::new(666),
         };
 
+        let terrain = Arc::new(Mutex::new(HashMap::new()));
+        let terrain_chunk_gen_queue = mpsc::channel();
+
+        {
+            let terrain = terrain.clone();
+            let terrain_config = terrain_config.clone();
+            std::thread::spawn(move || {
+                terrain_gen_thread(
+                    biome_config,
+                    terrain_config,
+                    terrain,
+                    terrain_chunk_gen_queue.1,
+                )
+            });
+        }
+
         let mut app = Self {
             #[cfg(feature = "egui")]
             egui_mq: egui_miniquad::EguiMq::new(&mut ctx),
@@ -227,13 +248,14 @@ impl App {
             fov_y_radians: 1.0,
             pipeline,
             frame_times: AllocRingBuffer::new(10),
-            biome_config,
-            terrain_config,
             prev_update: 0.0,
             prev_draw: 0.0,
             fps_history: AllocRingBuffer::new(256),
             view_fps_graph: false,
-            terrain: HashMap::new(),
+            terrain,
+            terrain_config,
+            terrain_chunk_gen_queue: terrain_chunk_gen_queue.0,
+            terrain_chunk_waiting: HashSet::new(),
             cube: (bindings, indices.len() as i32),
             sun_direction: Vec3::new(0.0, 1.0, 0.0),
             sun_color: Vec3::new(0.99, 0.72, 0.075),
@@ -372,31 +394,25 @@ impl App {
         );
         for dy in -self.render_distance..=self.render_distance {
             for dx in -self.render_distance..=self.render_distance {
+                let terrain = self.terrain.lock().unwrap();
+                let d_chunk = IVec2::new(dx, dy);
+                let chunk = camera_chunk + d_chunk;
+                if !terrain.contains_key(&chunk) {
+                    if !self.terrain_chunk_waiting.contains(&chunk) {
+                        self.terrain_chunk_gen_queue.send(chunk).unwrap();
+                        self.terrain_chunk_waiting.insert(chunk);
+                    }
+                    continue;
+                }
+
                 if let Some(camera_look_h) = camera_look_h {
                     let (vs, vc) = camera_look_h.sin_cos();
                     let look_v = Vec2::new(vs, vc).normalize();
-                    // Check if chunk is behind the camera
-                    // TODO: More margin, especially when looking down.
-                    if {
-                        let d_chunk = Vec2::new(dx as f32, dy as f32);
-                        look_v.dot(d_chunk) < 0.0
-                    } {
+                    if look_v.dot(d_chunk.as_vec2()) < 0.0 {
                         continue;
                     }
                 }
-                let d_chunk = IVec2::new(dx, dy);
-                let chunk_data = self
-                    .terrain
-                    // If the chunk already has data: return it. Otherwise: generate it,
-                    // put it in the hashmap and then return a reference to it.
-                    .entry(camera_chunk + d_chunk)
-                    .or_insert_with(|| {
-                        Self::generate_chunk(
-                            &self.biome_config,
-                            &self.terrain_config,
-                            camera_chunk + d_chunk,
-                        )
-                    });
+                let chunk_data = terrain.get(&chunk).unwrap();
 
                 // TODO: remove
                 let spawn_point_instance_data: Vec<_> = chunk_data
@@ -431,8 +447,6 @@ impl App {
                 );
                 self.ctx
                     .draw(0, self.cube.1, chunk_data.spawn_points.len() as i32);
-
-                // Draw all models
 
                 // First collect all models (in the current chunk) in an iterator
                 let models = chunk_data.objects.iter().flatten();
@@ -711,6 +725,21 @@ impl EventHandler for App {
         self.egui_mq.key_up_event(keycode, keymods);
 
         self.keys_down.insert(keycode, false);
+    }
+}
+
+fn terrain_gen_thread(
+    biome_config: BiomeConfig,
+    terrain_config: TerrainConfig,
+    terrain: Arc<Mutex<Terrain>>,
+    gen_queue: mpsc::Receiver<IVec2>,
+) {
+    for chunk in gen_queue.iter() {
+        if terrain.lock().unwrap().contains_key(&chunk) {
+            continue;
+        }
+        let data = App::generate_chunk(&biome_config, &terrain_config, chunk);
+        terrain.lock().unwrap().insert(chunk, data);
     }
 }
 
