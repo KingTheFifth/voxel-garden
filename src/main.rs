@@ -21,7 +21,6 @@ mod models;
 mod utils;
 
 type Point = IVec3;
-type Color = Vec4;
 type Terrain = HashMap<IVec2, GenerationPositions>;
 
 const MAX_INSTANCE_DATA: usize = size_of::<InstanceData>() * 100_000;
@@ -50,17 +49,12 @@ struct App {
     /// The bindings contain vertex buffer IDs, index buffer ID and any texture IDs.
     cube: (Bindings, i32),
 
-    /// Collects the N latest frame render times.
-    frame_times: AllocRingBuffer<f32>,
-
     /// The time at the previous call to update()
     prev_update: f64,
     /// The time at the previous call to draw()
     prev_draw: f64,
     /// Collecst the N latest FPS values. Used for the FPS graph.
     fps_history: AllocRingBuffer<f32>,
-    /// Whether to draw the FPS graph or not.
-    view_fps_graph: bool,
 
     // This is per-chunk
     terrain: Arc<Mutex<Terrain>>,
@@ -69,7 +63,8 @@ struct App {
     terrain_chunk_waiting: HashSet<IVec2>,
 
     sun_direction: Vec3,
-    sun_color: Vec3,
+    sun_color: Vec4,
+    ambient_light_color: Vec4,
 
     keys_down: HashMap<KeyCode, bool>,
     keys_just_pressed: HashSet<KeyCode>,
@@ -247,18 +242,17 @@ impl App {
             aspect_ratio: 1.0,
             fov_y_radians: 1.0,
             pipeline,
-            frame_times: AllocRingBuffer::new(10),
             prev_update: 0.0,
             prev_draw: 0.0,
-            fps_history: AllocRingBuffer::new(256),
-            view_fps_graph: false,
+            fps_history: AllocRingBuffer::new(100),
             terrain,
             terrain_config,
             terrain_chunk_gen_queue: terrain_chunk_gen_queue.0,
             terrain_chunk_waiting: HashSet::new(),
             cube: (bindings, indices.len() as i32),
-            sun_direction: Vec3::new(0.0, 1.0, 0.0),
-            sun_color: Vec3::new(0.99, 0.72, 0.075),
+            sun_direction: Vec3::new(1.0, 1.0, 0.0),
+            sun_color: Vec4::new(1.0, 1.0, 0.2, 1.0),
+            ambient_light_color: Vec4::new(0.7, 0.7, 0.7, 1.0),
             keys_down: HashMap::new(),
             keys_just_pressed: HashSet::new(),
             mouse_left_down: false,
@@ -282,7 +276,7 @@ impl App {
 
     #[cfg(feature = "egui")]
     fn egui_ui(&mut self) {
-        use egui::{TopBottomPanel, Window};
+        use egui::{color_picker::color_edit_button_rgb, TopBottomPanel};
         use egui_plot::{Line, Plot, PlotPoints};
 
         self.egui_mq.run(&mut self.ctx, |_ctx, egui_ctx| {
@@ -294,8 +288,6 @@ impl App {
                         }
                     });
                     ui.menu_button("View", |ui| {
-                        ui.checkbox(&mut self.view_fps_graph, "FPS graph");
-                        ui.separator();
                         if ui.button("Switch to trackball camera").clicked() {
                             self.movement = Movement::Trackball {
                                 down_pos: (0.0, 0.0),
@@ -314,54 +306,77 @@ impl App {
             });
 
             egui::Window::new("Debug").show(egui_ctx, |ui| {
-                ui.horizontal(|ui| {
+                egui::Grid::new("sliders").num_columns(2).show(ui, |ui| {
                     ui.label("render distance");
                     ui.add(
                         egui::Slider::new(&mut self.render_distance, 1..=32).clamp_to_range(true),
                     );
-                });
+                    ui.end_row();
 
-                ui.horizontal(|ui| {
                     ui.label("flying movement speed");
                     ui.add(
                         egui::Slider::new(&mut self.flying_movement_speed, (5.0)..=100.0)
                             .clamp_to_range(true),
                     );
-                });
-                ui.horizontal(|ui| {
+                    ui.end_row();
+
                     ui.label("on ground movement speed");
                     ui.add(
                         egui::Slider::new(&mut self.on_ground_movement_speed, (5.0)..=100.0)
                             .clamp_to_range(true),
                     );
+                    ui.end_row();
+
+                    ui.label("ambient light color");
+                    let mut rgb = [
+                        self.ambient_light_color.x,
+                        self.ambient_light_color.y,
+                        self.ambient_light_color.z,
+                    ];
+                    color_edit_button_rgb(ui, &mut rgb);
+                    self.ambient_light_color.x = rgb[0];
+                    self.ambient_light_color.y = rgb[1];
+                    self.ambient_light_color.z = rgb[2];
+                    ui.end_row();
+
+                    ui.label("sun color");
+                    let mut rgb = [self.sun_color.x, self.sun_color.y, self.sun_color.z];
+                    color_edit_button_rgb(ui, &mut rgb);
+                    self.sun_color.x = rgb[0];
+                    self.sun_color.y = rgb[1];
+                    self.sun_color.z = rgb[2];
+                    ui.end_row();
                 });
+            });
+
+            egui::Window::new("Performance").show(egui_ctx, |ui| {
+                ui.label(format!(
+                    "Average FPS: {:.0}",
+                    self.fps_history.iter().sum::<f32>() / self.fps_history.len() as f32
+                ));
 
                 ui.label(format!(
-                    "Average frame time: {:.2} ms",
-                    self.frame_times.iter().sum::<f32>() / self.frame_times.len() as f32
+                    "Terrain render queue: {}",
+                    self.terrain_chunk_waiting.len()
                 ));
+
+                let fps_points: PlotPoints = self
+                    .fps_history
+                    .iter()
+                    .enumerate()
+                    .map(|(x, y)| [x as f64, *y as f64])
+                    .collect();
+                Plot::new("fps plot")
+                    .include_y(0.0)
+                    .include_y(60.0)
+                    .allow_drag(false)
+                    .allow_scroll(false)
+                    .show_background(false)
+                    .show_x(false)
+                    .height(300.0)
+                    .width(350.0)
+                    .show(ui, |plot_ui| plot_ui.line(Line::new(fps_points)));
             });
-            Window::new("FPS")
-                .collapsible(false)
-                .open(&mut self.view_fps_graph)
-                .default_height(200.0)
-                .default_width(300.0)
-                .show(egui_ctx, |ui| {
-                    let fps_points: PlotPoints = self
-                        .fps_history
-                        .iter()
-                        .enumerate()
-                        .map(|(x, y)| [x as f64, *y as f64])
-                        .collect();
-                    Plot::new("fps plot")
-                        .include_y(0.0)
-                        .include_y(60.0)
-                        .allow_drag(false)
-                        .allow_scroll(false)
-                        .show_background(false)
-                        .show_x(false)
-                        .show(ui, |plot_ui| plot_ui.line(Line::new(fps_points)));
-                });
         });
 
         self.egui_mq.draw(&mut self.ctx);
@@ -397,6 +412,12 @@ impl App {
                 let terrain = self.terrain.lock().unwrap();
                 let d_chunk = IVec2::new(dx, dy);
                 let chunk = camera_chunk + d_chunk;
+
+                // remove generated chunks from queue
+                if self.terrain_chunk_waiting.contains(&chunk) && terrain.contains_key(&chunk) {
+                    self.terrain_chunk_waiting.remove(&chunk);
+                }
+
                 if !terrain.contains_key(&chunk) {
                     if !self.terrain_chunk_waiting.contains(&chunk) {
                         self.terrain_chunk_gen_queue.send(chunk).unwrap();
@@ -433,6 +454,7 @@ impl App {
                         camera_matrix: camera,
                         sun_direction: self.sun_direction,
                         sun_color: self.sun_color,
+                        ambient_light_color: self.ambient_light_color,
                     }));
                 self.ctx
                     .draw(0, self.cube.1, chunk_data.ground.len() as i32);
@@ -468,6 +490,7 @@ impl App {
                             camera_matrix: camera,
                             sun_direction: self.sun_direction,
                             sun_color: self.sun_color,
+                            ambient_light_color: self.ambient_light_color,
                         }));
                     self.ctx.draw(0, self.cube.1, model.points.len() as i32);
                 }
@@ -592,8 +615,14 @@ impl EventHandler for App {
         self.prev_draw = now;
         self.fps_history.push(1.0 / draw_delta);
 
-        self.ctx
-            .begin_default_pass(PassAction::clear_color(0.1, 0.1, 0.1, 1.0));
+        // sky
+        self.ctx.begin_default_pass(PassAction::clear_color(
+            0x87 as f32 / 255.0,
+            0xCE as f32 / 255.0,
+            0xEB as f32 / 255.0,
+            1.0,
+        ));
+
         // Beware the pipeline
         self.ctx.apply_pipeline(&self.pipeline);
 
@@ -756,6 +785,7 @@ fn main() {
 mod shader {
     use glam::Mat4;
     use glam::Vec3;
+    use glam::Vec4;
     use miniquad::ShaderMeta;
     use miniquad::UniformBlockLayout;
     use miniquad::UniformDesc;
@@ -773,7 +803,8 @@ mod shader {
                     UniformDesc::new("model_matrix", UniformType::Mat4),
                     UniformDesc::new("camera_matrix", UniformType::Mat4),
                     UniformDesc::new("sun_direction", UniformType::Float3),
-                    UniformDesc::new("sun_color", UniformType::Float3),
+                    UniformDesc::new("sun_color", UniformType::Float4),
+                    UniformDesc::new("ambient_light_color", UniformType::Float4),
                 ],
             },
         }
@@ -785,6 +816,7 @@ mod shader {
         pub model_matrix: Mat4,
         pub camera_matrix: Mat4,
         pub sun_direction: Vec3,
-        pub sun_color: Vec3,
+        pub sun_color: Vec4,
+        pub ambient_light_color: Vec4,
     }
 }
