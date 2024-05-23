@@ -4,7 +4,7 @@ use std::f32::EPSILON;
 
 use glam::{Mat4, Vec3, Vec4};
 
-use crate::{Point, Voxel};
+use crate::Point;
 
 pub const RED: Vec4 = Vec4::new(1.0, 0.0, 0.0, 1.0);
 pub const GREEN: Vec4 = Vec4::new(0.0, 1.0, 0.0, 1.0);
