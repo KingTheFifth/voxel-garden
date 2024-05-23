@@ -8,11 +8,13 @@ use glam::{IVec2, IVec3, Mat4, Quat, Vec2, Vec3, Vec4};
 use miniquad::{
     conf, date, window, Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, Comparison,
     CullFace, EventHandler, GlContext, KeyCode, PassAction, Pipeline, PipelineParams,
-    RenderingBackend, ShaderSource, UniformsSource, VertexAttribute, VertexFormat, VertexStep,
+    RenderingBackend, ShaderSource, TextureFormat, TextureKind, TextureParams, TextureWrap,
+    UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
 use models::biomes::BiomeConfig;
 use models::terrain::{generate_terrain, GenerationPositions, TerrainConfig};
 use noise::Perlin;
+use rand::{thread_rng, Rng, RngCore};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
 use crate::camera::{trackball_control, Movement};
@@ -181,10 +183,30 @@ impl App {
             BufferSource::empty::<InstanceData>(MAX_INSTANCE_DATA),
         );
 
+        let mut random_bytes = [0u8; 1024 * 1024 * 4];
+        let mut rng = thread_rng();
+        for i in 0..(1024 * 1024) {
+            random_bytes[i * 4 + 0] = rng.gen();
+            random_bytes[i * 4 + 1] = rng.gen();
+            random_bytes[i * 4 + 2] = rng.gen();
+            random_bytes[i * 4 + 3] = 255;
+        }
+        let water_random_tex = ctx.new_texture_from_data_and_format(
+            &random_bytes,
+            TextureParams {
+                kind: TextureKind::Texture2D,
+                width: 1024,
+                height: 1024,
+                format: TextureFormat::RGBA8,
+                wrap: TextureWrap::Repeat,
+                ..Default::default()
+            },
+        );
+
         let bindings = Bindings {
             vertex_buffers: vec![geometry_vertex_buffer, instance_buffer],
             index_buffer,
-            images: vec![],
+            images: vec![water_random_tex],
         };
 
         let pipeline = ctx.new_pipeline(
@@ -815,7 +837,7 @@ mod shader {
 
     pub fn meta() -> ShaderMeta {
         ShaderMeta {
-            images: vec![],
+            images: vec!["water_random".to_string()],
             uniforms: UniformBlockLayout {
                 uniforms: vec![
                     UniformDesc::new("proj_matrix", UniformType::Mat4),
