@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::mem::size_of;
+use std::time::{Duration, SystemTime};
 use std::{collections::HashMap, f32::consts::PI};
 
 use glam::{IVec2, IVec3, Mat4, Quat, Vec2, Vec3, Vec4};
@@ -62,6 +63,8 @@ struct App {
     biome_config: BiomeConfig,
     terrain_config: TerrainConfig,
     terrain: HashMap<IVec2, GenerationPositions>,
+    // Used to get timedifference for water waves
+    system_time: SystemTime,
 
     sun_direction: Vec3,
     sun_color: Vec3,
@@ -94,11 +97,16 @@ struct VertexData {
 struct InstanceData {
     position: Vec3,
     color: Vec4,
+    is_water: i32,
 }
 
 impl InstanceData {
-    fn new(position: Vec3, color: Vec4) -> InstanceData {
-        InstanceData { position, color }
+    fn new(position: Vec3, color: Vec4, is_water: i32) -> InstanceData {
+        InstanceData {
+            position,
+            color,
+            is_water,
+        }
     }
 }
 
@@ -194,6 +202,7 @@ impl App {
                 VertexAttribute::with_buffer("in_normal", VertexFormat::Float3, 0),
                 VertexAttribute::with_buffer("in_inst_position", VertexFormat::Float3, 1), // TODO: VertexFormat::Int32?
                 VertexAttribute::with_buffer("in_inst_color", VertexFormat::Float4, 1),
+                VertexAttribute::with_buffer("is_water", VertexFormat::Int1, 1),
             ],
             shader,
             PipelineParams {
@@ -210,6 +219,7 @@ impl App {
             height: 20,
             depth: CHUNK_SIZE,
             max_height: 40.,
+            min_height: 6.,
             noise: Perlin::new(555),
         };
 
@@ -252,6 +262,7 @@ impl App {
             flying_movement_speed: 10.0,
             on_ground_movement_speed: 40.0,
             render_distance: 8,
+            system_time: SystemTime::now(),
         };
         // Make sure aspect_ratio and fov_y_radians are correct at the first draw
         app.resize_event(window_width, window_height);
@@ -417,6 +428,10 @@ impl App {
                         camera_matrix: camera,
                         sun_direction: self.sun_direction,
                         sun_color: self.sun_color,
+                        time: SystemTime::now()
+                            .duration_since(self.system_time)
+                            .unwrap()
+                            .as_secs_f32(),
                     }));
                 self.ctx
                     .draw(0, self.cube.1, chunk_data.ground.len() as i32);
@@ -454,6 +469,10 @@ impl App {
                             camera_matrix: camera,
                             sun_direction: self.sun_direction,
                             sun_color: self.sun_color,
+                            time: SystemTime::now()
+                                .duration_since(self.system_time)
+                                .unwrap()
+                                .as_secs_f32(),
                         }));
                     self.ctx.draw(0, self.cube.1, model.points.len() as i32);
                 }
@@ -745,6 +764,7 @@ mod shader {
                     UniformDesc::new("camera_matrix", UniformType::Mat4),
                     UniformDesc::new("sun_direction", UniformType::Float3),
                     UniformDesc::new("sun_color", UniformType::Float3),
+                    UniformDesc::new("time", UniformType::Float1),
                 ],
             },
         }
@@ -757,5 +777,6 @@ mod shader {
         pub camera_matrix: Mat4,
         pub sun_direction: Vec3,
         pub sun_color: Vec3,
+        pub time: f32,
     }
 }
