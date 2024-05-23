@@ -1,7 +1,7 @@
 use crate::models::biomes::{Biome, BiomeConfig};
 use crate::models::flower::proc_gen_flower;
-use crate::models::{tree, Model};
-use crate::utils::{BROWN, GREEN, RED};
+use crate::models::{rock, tree, Model};
+use crate::utils::{BROWN, GREEN, GREY, RED};
 use crate::InstanceData;
 use glam::{Vec3, Vec4};
 use noise::{NoiseFn, Perlin};
@@ -13,6 +13,7 @@ pub enum SpawnType {
     Tree,
     Flower,
     Cactus,
+    Rock,
 }
 
 #[derive(Clone)]
@@ -117,6 +118,10 @@ pub fn generate_terrain(
                         Some(tree(0, Vec3::new(position.x, position.y + 1.0, position.z))),
                     ),
                     SpawnType::Cactus => (GREEN, None),
+                    SpawnType::Rock => (
+                        GREY,
+                        Some(rock(0, Vec3::new(position.x, position.y + 1., position.z))),
+                    ),
                 };
                 spawn_points.push(SpawnPoint::new(
                     InstanceData::new(

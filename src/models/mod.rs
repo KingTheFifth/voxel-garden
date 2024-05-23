@@ -7,11 +7,13 @@ use crate::InstanceData;
 pub mod biomes;
 pub mod flower;
 pub mod primitives;
+pub mod rock;
 pub mod terrain;
 pub mod tree;
 
 pub use flower::flower;
 pub use flower::flower_blue;
+pub use rock::rock;
 pub use terrain::generate_terrain;
 pub use tree::tree;
 
