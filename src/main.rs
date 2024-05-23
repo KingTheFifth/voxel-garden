@@ -1,11 +1,12 @@
+use std::collections::HashSet;
 use std::mem::size_of;
 use std::{collections::HashMap, f32::consts::PI};
 
 use glam::{IVec2, IVec3, Mat4, Quat, Vec2, Vec3, Vec4};
 use miniquad::{
     conf, date, window, Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, Comparison,
-    CullFace, EventHandler, KeyCode, PassAction, Pipeline, PipelineParams, RenderingBackend,
-    ShaderSource, UniformsSource, VertexAttribute, VertexFormat, VertexStep,
+    CullFace, EventHandler, GlContext, KeyCode, PassAction, Pipeline, PipelineParams,
+    RenderingBackend, ShaderSource, UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
 use models::biomes::BiomeConfig;
 use models::terrain::{generate_terrain, GenerationPositions, TerrainConfig};
@@ -19,56 +20,75 @@ mod models;
 mod utils;
 
 type Point = IVec3;
-type Color = Vec4;
 
 const MAX_INSTANCE_DATA: usize = size_of::<InstanceData>() * 100_000;
 const CHUNK_SIZE: i32 = 32;
 
+/// Contains state used by the application.
 struct App {
-    ctx: Box<dyn RenderingBackend>,
+    /// The rendering context contains all state related to OpenGL managed by miniquad.
+    ctx: GlContext,
+    /// Current aspect ratio of the window. Used to calculate the perspective matrix.
     aspect_ratio: f32,
+    /// Current target vertical FOV. Used to calculate the perspective matrix.
     fov_y_radians: f32,
+    /// Contains state required for integrating the GUI library with miniquad.
     #[cfg(feature = "egui")]
     egui_mq: egui_miniquad::EguiMq,
+    /// A pipeline (rendering pipeline) collects information that is applied before draw
+    /// calls. It contains:
+    ///
+    /// - reference to compiled shader program
+    /// - vertex attribute configuration (stride, buffer index, etc)
+    /// - parameters such as culling, depth test, blends, ...
     pipeline: Pipeline,
+    /// Tuple of bindings and amount of vertices.
+    ///
+    /// The bindings contain vertex buffer IDs, index buffer ID and any texture IDs.
     cube: (Bindings, i32),
 
+    /// Collects the N latest frame render times.
     frame_times: AllocRingBuffer<f32>,
 
+    /// The time at the previous call to update()
     prev_update: f64,
+    /// The time at the previous call to draw()
     prev_draw: f64,
+    /// Collecst the N latest FPS values. Used for the FPS graph.
     fps_history: AllocRingBuffer<f32>,
+    /// Whether to draw the FPS graph or not.
     view_fps_graph: bool,
 
-    // This is per-chunk
     biome_config: BiomeConfig,
     terrain_config: TerrainConfig,
     terrain: HashMap<IVec2, GenerationPositions>,
-    voxels: Vec<Voxel>,
 
     sun_direction: Vec3,
     sun_color: Vec3,
 
     keys_down: HashMap<KeyCode, bool>,
+    keys_just_pressed: HashSet<KeyCode>,
     mouse_left_down: bool,
     mouse_right_down: bool,
+    /// Mouse position previous frame (we only get absolute coordinates so need to calculate the delta movement manually).
     mouse_prev_pos: (f32, f32),
+    /// Currently active camera movement (enum, so always one of trackball, flying and on-ground).
     movement: Movement,
+    flying_movement_speed: f32,
+    on_ground_movement_speed: f32,
+    lock_mouse: bool,
+    /// How many chunks to render in each direction from the camera.
     render_distance: i32,
 }
 
-#[derive(Clone, Copy, Debug)]
-struct Voxel {
-    position: Point,
-    color: Color,
-}
-
+/// Uploaded vertex data to the GPU
 #[repr(C)]
 struct VertexData {
     position: Vec3,
     normal: Vec3,
 }
 
+/// Uploaded instance data to the GPU
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct InstanceData {
@@ -84,8 +104,9 @@ impl InstanceData {
 
 impl App {
     fn new() -> Self {
-        let mut ctx: Box<dyn RenderingBackend> = window::new_rendering_backend();
+        let mut ctx = GlContext::new();
         let (window_width, window_height) = window::screen_size();
+        // Compile the shader.
         let shader = ctx
             .new_shader(
                 ShaderSource::Glsl {
@@ -143,21 +164,26 @@ impl App {
             BufferSource::slice(&indices),
         );
 
-        let positions_vertex_buffer = ctx.new_buffer(
+        // Even though this says VertexBuffer, a bit further down we specify a buffer
+        // layout with `VertexStep::PerInstance`, meaning the data is the same for
+        // every vertex in its instance.
+        let instance_buffer = ctx.new_buffer(
             BufferType::VertexBuffer,
             BufferUsage::Stream, // TODO: dynamic?
             BufferSource::empty::<InstanceData>(MAX_INSTANCE_DATA),
         );
 
         let bindings = Bindings {
-            vertex_buffers: vec![geometry_vertex_buffer, positions_vertex_buffer],
+            vertex_buffers: vec![geometry_vertex_buffer, instance_buffer],
             index_buffer,
             images: vec![],
         };
 
         let pipeline = ctx.new_pipeline(
             &[
+                // buffer 0: geometry vertex buffer
                 BufferLayout::default(),
+                // buffer 1: instance "vertex" buffer
                 BufferLayout {
                     step_func: VertexStep::PerInstance,
                     ..BufferLayout::default()
@@ -177,7 +203,6 @@ impl App {
                 ..Default::default()
             },
         );
-        // let voxels = bresenham(Voxel::ZERO, Voxel::new(10, 5, 3));
 
         let terrain_config = TerrainConfig {
             sample_rate: 0.004,
@@ -196,7 +221,7 @@ impl App {
 
         let mut app = Self {
             #[cfg(feature = "egui")]
-            egui_mq: egui_miniquad::EguiMq::new(&mut *ctx),
+            egui_mq: egui_miniquad::EguiMq::new(&mut ctx),
             ctx,
             aspect_ratio: 1.0,
             fov_y_radians: 1.0,
@@ -212,8 +237,8 @@ impl App {
             cube: (bindings, indices.len() as i32),
             sun_direction: Vec3::new(0.0, 1.0, 0.0),
             sun_color: Vec3::new(0.99, 0.72, 0.075),
-            voxels: vec![],
             keys_down: HashMap::new(),
+            keys_just_pressed: HashSet::new(),
             mouse_left_down: false,
             mouse_right_down: false,
             mouse_prev_pos: (0.0, 0.0),
@@ -223,12 +248,12 @@ impl App {
                 look_h: 0.0,
                 look_v: 0.0,
             },
+            lock_mouse: true,
+            flying_movement_speed: 10.0,
+            on_ground_movement_speed: 40.0,
             render_distance: 8,
-            // movement: Movement::Trackball {
-            //     down_pos: (0.0, 0.0),
-            //     matrix: Mat4::IDENTITY,
-            // },
         };
+        // Make sure aspect_ratio and fov_y_radians are correct at the first draw
         app.resize_event(window_width, window_height);
         app
     }
@@ -238,7 +263,7 @@ impl App {
         use egui::{TopBottomPanel, Window};
         use egui_plot::{Line, Plot, PlotPoints};
 
-        self.egui_mq.run(&mut *self.ctx, |_ctx, egui_ctx| {
+        self.egui_mq.run(&mut self.ctx, |_ctx, egui_ctx| {
             TopBottomPanel::top("top bar").show(egui_ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.menu_button("File", |ui| {
@@ -274,6 +299,21 @@ impl App {
                     );
                 });
 
+                ui.horizontal(|ui| {
+                    ui.label("flying movement speed");
+                    ui.add(
+                        egui::Slider::new(&mut self.flying_movement_speed, (5.0)..=100.0)
+                            .clamp_to_range(true),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.label("on ground movement speed");
+                    ui.add(
+                        egui::Slider::new(&mut self.on_ground_movement_speed, (5.0)..=100.0)
+                            .clamp_to_range(true),
+                    );
+                });
+
                 ui.label(format!(
                     "Average frame time: {:.2} ms",
                     self.frame_times.iter().sum::<f32>() / self.frame_times.len() as f32
@@ -302,7 +342,7 @@ impl App {
                 });
         });
 
-        self.egui_mq.draw(&mut *self.ctx);
+        self.egui_mq.draw(&mut self.ctx);
     }
 
     fn generate_chunk(
@@ -325,6 +365,7 @@ impl App {
         camera_position: IVec2,
         camera_look_h: Option<f32>,
     ) {
+        // Which chunk is the camera located in?
         let camera_chunk = IVec2::new(
             camera_position.x / CHUNK_SIZE,
             camera_position.y / CHUNK_SIZE,
@@ -334,6 +375,8 @@ impl App {
                 if let Some(camera_look_h) = camera_look_h {
                     let (vs, vc) = camera_look_h.sin_cos();
                     let look_v = Vec2::new(vs, vc).normalize();
+                    // Check if chunk is behind the camera
+                    // TODO: More margin, especially when looking down.
                     if {
                         let d_chunk = Vec2::new(dx as f32, dy as f32);
                         look_v.dot(d_chunk) < 0.0
@@ -344,6 +387,8 @@ impl App {
                 let d_chunk = IVec2::new(dx, dy);
                 let chunk_data = self
                     .terrain
+                    // If the chunk already has data: return it. Otherwise: generate it,
+                    // put it in the hashmap and then return a reference to it.
                     .entry(camera_chunk + d_chunk)
                     .or_insert_with(|| {
                         Self::generate_chunk(
@@ -353,6 +398,7 @@ impl App {
                         )
                     });
 
+                // TODO: remove
                 let spawn_point_instance_data: Vec<_> = chunk_data
                     .spawn_points
                     .iter()
@@ -375,6 +421,7 @@ impl App {
                 self.ctx
                     .draw(0, self.cube.1, chunk_data.ground.len() as i32);
 
+                // TODO: remove
                 // draw spawn points
                 // dont need to apply uniforms since spawn points
                 // can be treated as ground voxels
@@ -385,21 +432,12 @@ impl App {
                 self.ctx
                     .draw(0, self.cube.1, chunk_data.spawn_points.len() as i32);
 
-                // draw models
-                let models = self
-                    .terrain
-                    .entry(camera_chunk + d_chunk)
-                    .or_insert_with(|| {
-                        Self::generate_chunk(
-                            &self.biome_config,
-                            &self.terrain_config,
-                            camera_chunk + d_chunk,
-                        )
-                    })
-                    .objects
-                    .iter()
-                    .flatten();
+                // Draw all models
 
+                // First collect all models (in the current chunk) in an iterator
+                let models = chunk_data.objects.iter().flatten();
+
+                // Then draw each model one at a time
                 for model in models {
                     self.ctx.buffer_update(
                         self.cube.0.vertex_buffers[1],
@@ -430,7 +468,13 @@ impl EventHandler for App {
         let delta = (now - self.prev_update) as f32;
         self.prev_update = now;
 
+        if self.keys_just_pressed.contains(&KeyCode::F1) {
+            self.lock_mouse ^= true;
+        }
+
+        // Apply camera movement
         match &mut self.movement {
+            // Trackball camera cannot move
             Movement::Trackball { .. } => {}
             Movement::Flying {
                 position,
@@ -465,7 +509,9 @@ impl EventHandler for App {
                         (Quat::from_rotation_y(*look_h) * Quat::from_rotation_x(*look_v))
                             .normalize(),
                     );
-                    *position += (rot_mat * movement_vector.normalize()).truncate() * delta * 10.0;
+                    *position += (rot_mat * movement_vector.normalize()).truncate()
+                        * delta
+                        * self.flying_movement_speed;
                 }
             }
             Movement::OnGround {
@@ -489,7 +535,9 @@ impl EventHandler for App {
                 }
                 if movement_vector.length_squared() != 0.0 {
                     let rot_mat = Mat4::from_quat(Quat::from_rotation_y(*look_h).normalize());
-                    *position += (rot_mat * movement_vector.normalize()).truncate() * delta * 40.0;
+                    *position += (rot_mat * movement_vector.normalize()).truncate()
+                        * delta
+                        * self.on_ground_movement_speed;
                 }
 
                 let height_at_p = self.terrain_config.sample(position.x, position.z) + 20.0;
@@ -515,6 +563,8 @@ impl EventHandler for App {
                 }
             }
         }
+
+        self.keys_just_pressed.clear();
     }
 
     fn resize_event(&mut self, width: f32, height: f32) {
@@ -569,31 +619,33 @@ impl EventHandler for App {
         #[cfg(feature = "egui")]
         self.egui_mq.mouse_motion_event(x, y);
 
-        let camera_matrix = self.movement.camera_matrix();
-        match &mut self.movement {
-            Movement::Trackball {
-                down_pos: _,
-                matrix,
-            } => {
-                if self.mouse_left_down {
-                    *matrix =
-                        trackball_control(camera_matrix, (x, y), self.mouse_prev_pos) * *matrix;
+        if self.lock_mouse {
+            let camera_matrix = self.movement.camera_matrix();
+            match &mut self.movement {
+                Movement::Trackball {
+                    down_pos: _,
+                    matrix,
+                } => {
+                    if self.mouse_left_down {
+                        *matrix =
+                            trackball_control(camera_matrix, (x, y), self.mouse_prev_pos) * *matrix;
+                    }
                 }
-            }
-            Movement::Flying {
-                position: _,
-                look_h,
-                look_v,
-            }
-            | Movement::OnGround {
-                position: _,
-                velocity: _,
-                look_h,
-                look_v,
-            } => {
-                *look_h += (self.mouse_prev_pos.0 - x) / 100.0;
-                *look_v = (*look_v - (self.mouse_prev_pos.1 - y) / 100.0)
-                    .clamp(-PI / 2.0 + 0.01, PI / 2.0 - 0.01);
+                Movement::Flying {
+                    position: _,
+                    look_h,
+                    look_v,
+                }
+                | Movement::OnGround {
+                    position: _,
+                    velocity: _,
+                    look_h,
+                    look_v,
+                } => {
+                    *look_h += (self.mouse_prev_pos.0 - x) / 100.0;
+                    *look_v = (*look_v - (self.mouse_prev_pos.1 - y) / 100.0)
+                        .clamp(-PI / 2.0 + 0.01, PI / 2.0 - 0.01);
+                }
             }
         }
         self.mouse_prev_pos = (x, y);
@@ -650,6 +702,7 @@ impl EventHandler for App {
         #[cfg(feature = "egui")]
         self.egui_mq.key_down_event(keycode, keymods);
 
+        self.keys_just_pressed.insert(keycode);
         self.keys_down.insert(keycode, true);
     }
 
