@@ -735,12 +735,11 @@ fn terrain_gen_thread(
     gen_queue: mpsc::Receiver<IVec2>,
 ) {
     for chunk in gen_queue.iter() {
-        let data = App::generate_chunk(&biome_config, &terrain_config, chunk);
-        let mut terrain = terrain.lock().unwrap();
-        if terrain.contains_key(&chunk) {
+        if terrain.lock().unwrap().contains_key(&chunk) {
             continue;
         }
-        terrain.insert(chunk, data);
+        let data = App::generate_chunk(&biome_config, &terrain_config, chunk);
+        terrain.lock().unwrap().insert(chunk, data);
     }
 }
 
