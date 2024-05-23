@@ -1,6 +1,13 @@
 #![allow(unused)]
 
+use std::{
+    collections::HashMap,
+    sync::{Mutex, OnceLock},
+};
+
 use crate::Point;
+
+static SPHERES: OnceLock<Mutex<HashMap<u32, Vec<Point>>>> = OnceLock::new();
 
 struct BresenhamPoints {
     start: Point,
@@ -105,6 +112,13 @@ pub fn circle(midpoint: Point, r: f32) -> Vec<Point> {
 }
 
 pub fn sphere(midpoint: Point, r: f32) -> Vec<Point> {
+    let mut spheres = SPHERES
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap();
+    if let Some(sphere) = spheres.get(&r.to_bits()) {
+        return sphere.clone();
+    }
     let mut points = vec![];
     let Point {
         x: px,
@@ -145,6 +159,8 @@ pub fn sphere(midpoint: Point, r: f32) -> Vec<Point> {
         .all(|d| orig.contains(&(*p + d)));
         !has_all_neighbours
     });
+
+    spheres.insert(r.to_bits(), points.clone());
 
     points
 }

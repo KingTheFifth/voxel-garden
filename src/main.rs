@@ -355,6 +355,11 @@ impl App {
                     self.fps_history.iter().sum::<f32>() / self.fps_history.len() as f32
                 ));
 
+                ui.label(format!(
+                    "Terrain render queue: {}",
+                    self.terrain_chunk_waiting.len()
+                ));
+
                 let fps_points: PlotPoints = self
                     .fps_history
                     .iter()
@@ -407,6 +412,12 @@ impl App {
                 let terrain = self.terrain.lock().unwrap();
                 let d_chunk = IVec2::new(dx, dy);
                 let chunk = camera_chunk + d_chunk;
+
+                // remove generated chunks from queue
+                if self.terrain_chunk_waiting.contains(&chunk) && terrain.contains_key(&chunk) {
+                    self.terrain_chunk_waiting.remove(&chunk);
+                }
+
                 if !terrain.contains_key(&chunk) {
                     if !self.terrain_chunk_waiting.contains(&chunk) {
                         self.terrain_chunk_gen_queue.send(chunk).unwrap();
