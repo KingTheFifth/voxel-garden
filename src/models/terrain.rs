@@ -95,7 +95,9 @@ pub fn generate_terrain(
             let current_height = config.sample(x as f32, z as f32).trunc();
 
             if current_height <= config.min_height {
-                let position = Vec3::new(x as f32, config.min_height, z as f32);
+                let mut position = Vec3::new(x as f32, config.min_height, z as f32);
+                instance_data.push(InstanceData::new(position, BLUE, 1));
+                position.y += 1.;
                 instance_data.push(InstanceData::new(position, BLUE, 1));
                 continue;
             }

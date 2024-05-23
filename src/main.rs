@@ -97,11 +97,11 @@ struct VertexData {
 struct InstanceData {
     position: Vec3,
     color: Vec4,
-    is_water: i32,
+    is_water: u32,
 }
 
 impl InstanceData {
-    fn new(position: Vec3, color: Vec4, is_water: i32) -> InstanceData {
+    fn new(position: Vec3, color: Vec4, is_water: u32) -> InstanceData {
         InstanceData {
             position,
             color,
