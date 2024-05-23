@@ -6,14 +6,14 @@ in  vec3 in_inst_position;
 in  vec4 in_inst_color;
 in uint is_water;
 
-out vec4 out_inst_color;
-flat out vec4 diffuse_sun_c;
+flat out vec4 out_inst_color;
 
 uniform mat4 proj_matrix;
 uniform mat4 model_matrix;
 uniform mat4 camera_matrix;
 uniform vec3 sun_direction;
-uniform vec3 sun_color;
+uniform vec4 sun_color;
+uniform vec4 ambient_light_color;
 uniform float time;
 
 void main(void) {
@@ -32,10 +32,11 @@ void main(void) {
     vec3 pos = new_inst_pos + in_position;
     gl_Position = proj_matrix * model_matrix * vec4(pos, 1.0);
     
+
     vec3 n = normalize(mat3(model_matrix) * in_normal);
     vec3 s = normalize(mat3(camera_matrix)*sun_direction);
-    diffuse_sun_c = vec4(0.5 * sun_color * max(0.0, dot(n, s)), 1.0);
+    vec4 color_ambient = ambient_light_color * in_inst_color;
+    vec4 color_sun = sun_color * max(0.0, dot(n, s)) * in_inst_color;
 
-
-    out_inst_color = in_inst_color;
+    out_inst_color = color_ambient + color_sun;
 }

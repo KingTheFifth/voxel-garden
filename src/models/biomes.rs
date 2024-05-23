@@ -38,12 +38,24 @@ impl Biome {
                     spawn_rate: 0.01,
                     group_spawn_rate: 0.1,
                 },
+                BiomeSpawnData {
+                    spawn_type: SpawnType::Rock,
+                    spawn_rate: 0.05,
+                    group_spawn_rate: 0.2,
+                },
             ],
-            Biome::Field => vec![BiomeSpawnData {
-                spawn_type: SpawnType::Flower,
-                spawn_rate: 0.02,
-                group_spawn_rate: 0.7,
-            }],
+            Biome::Field => vec![
+                BiomeSpawnData {
+                    spawn_type: SpawnType::Flower,
+                    spawn_rate: 0.02,
+                    group_spawn_rate: 0.7,
+                },
+                BiomeSpawnData {
+                    spawn_type: SpawnType::Rock,
+                    spawn_rate: 0.01,
+                    group_spawn_rate: 0.1,
+                },
+            ],
             Biome::Desert => vec![BiomeSpawnData {
                 spawn_type: SpawnType::Cactus,
                 spawn_rate: 0.02,
