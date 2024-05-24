@@ -51,3 +51,12 @@ pub fn arb_rotate(axis: Vec3, angle: f32) -> Mat4 {
     let rot_x_mat = Mat4::from_rotation_x(angle);
     rot_mat_t * rot_x_mat * rot_mat
 }
+
+pub fn now_f32() -> f32 {
+    use std::time::SystemTime;
+
+    let time = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap();
+    time.as_secs_f64().rem_euclid(100000.0) as f32
+}
