@@ -13,8 +13,7 @@ use crate::camera::{trackball_control, Movement};
 use crate::models::biomes::BiomeConfig;
 use crate::models::terrain::{generate_terrain, GenerationPositions, TerrainConfig};
 pub use crate::shader::InstanceData;
-use crate::shader::{Shader, Uniforms};
-use crate::utils::now_f32;
+use crate::shader::Shader;
 
 mod camera;
 mod models;
@@ -51,16 +50,6 @@ struct App {
     terrain_config: TerrainConfig,
     terrain_chunk_gen_queue: mpsc::Sender<IVec2>,
     terrain_chunk_waiting: HashSet<IVec2>,
-
-    sun_direction: Vec3,
-    sun_color: Vec4,
-    ambient_light_color: Vec4,
-    ambient_water_activity: f32,
-    wave_water_peak: f32,
-    wave_water_pow: f32,
-    wave_water_x_factor: f32,
-    wave_water_z_factor: f32,
-    wave_water_frequency: f32,
 
     keys_down: HashMap<KeyCode, bool>,
     keys_just_pressed: HashSet<KeyCode>,
@@ -131,15 +120,6 @@ impl App {
             terrain_config,
             terrain_chunk_gen_queue: terrain_chunk_gen_queue.0,
             terrain_chunk_waiting: HashSet::new(),
-            sun_direction: Vec3::new(1.0, 1.0, 0.0),
-            sun_color: Vec4::new(1.0, 1.0, 0.2, 1.0),
-            ambient_light_color: Vec4::new(0.7, 0.7, 0.7, 1.0),
-            ambient_water_activity: 0.25,
-            wave_water_peak: 0.7,
-            wave_water_pow: 8.0,
-            wave_water_x_factor: 0.0005,
-            wave_water_z_factor: 0.00115,
-            wave_water_frequency: 3.0,
             keys_down: HashMap::new(),
             keys_just_pressed: HashSet::new(),
             mouse_left_down: false,
@@ -163,7 +143,7 @@ impl App {
 
     #[cfg(feature = "egui")]
     fn egui_ui(&mut self) {
-        use egui::{color_picker::color_edit_button_rgb, TopBottomPanel};
+        use egui::TopBottomPanel;
         use egui_plot::{Line, Plot, PlotPoints};
 
         self.egui_mq.run(&mut self.ctx, |_ctx, egui_ctx| {
@@ -214,69 +194,7 @@ impl App {
                     );
                     ui.end_row();
 
-                    ui.label("ambient light color");
-                    let mut rgb = [
-                        self.ambient_light_color.x,
-                        self.ambient_light_color.y,
-                        self.ambient_light_color.z,
-                    ];
-                    color_edit_button_rgb(ui, &mut rgb);
-                    self.ambient_light_color.x = rgb[0];
-                    self.ambient_light_color.y = rgb[1];
-                    self.ambient_light_color.z = rgb[2];
-                    ui.end_row();
-
-                    ui.label("sun color");
-                    let mut rgb = [self.sun_color.x, self.sun_color.y, self.sun_color.z];
-                    color_edit_button_rgb(ui, &mut rgb);
-                    self.sun_color.x = rgb[0];
-                    self.sun_color.y = rgb[1];
-                    self.sun_color.z = rgb[2];
-                    ui.end_row();
-
-                    ui.label("ambient water activity");
-                    ui.add(
-                        egui::Slider::new(&mut self.ambient_water_activity, (0.0)..=1.0)
-                            .clamp_to_range(true),
-                    );
-                    ui.end_row();
-
-                    ui.label("wave water peak");
-                    ui.add(
-                        egui::Slider::new(&mut self.wave_water_peak, (0.0)..=1.0)
-                            .clamp_to_range(true),
-                    );
-                    ui.end_row();
-
-                    ui.label("wave water pow");
-                    ui.add(
-                        egui::Slider::new(&mut self.wave_water_pow, (0.0)..=20.0)
-                            .clamp_to_range(true),
-                    );
-                    ui.end_row();
-
-                    ui.label("wave water x factor");
-                    ui.add(
-                        egui::Slider::new(&mut self.wave_water_x_factor, (0.0)..=0.01)
-                            .clamp_to_range(true)
-                            .logarithmic(true),
-                    );
-                    ui.end_row();
-
-                    ui.label("wave water z factor");
-                    ui.add(
-                        egui::Slider::new(&mut self.wave_water_z_factor, (0.0)..=0.01)
-                            .clamp_to_range(true)
-                            .logarithmic(true),
-                    );
-                    ui.end_row();
-
-                    ui.label("wave water frequency");
-                    ui.add(
-                        egui::Slider::new(&mut self.wave_water_frequency, (0.0)..=20.0)
-                            .clamp_to_range(true),
-                    );
-                    ui.end_row();
+                    self.shader.egui_uniform_slider_rows(ui);
                 });
             });
 
@@ -311,30 +229,6 @@ impl App {
         });
 
         self.egui_mq.draw(&mut self.ctx);
-    }
-
-    fn uniforms(
-        &self,
-        proj_matrix: Mat4,
-        model_matrix: Mat4,
-        camera_matrix: Mat4,
-        time: f32,
-    ) -> Uniforms {
-        Uniforms {
-            proj_matrix,
-            model_matrix,
-            camera_matrix,
-            sun_direction: self.sun_direction,
-            time,
-            sun_color: self.sun_color,
-            ambient_light_color: self.ambient_light_color,
-            ambient_water_activity: self.ambient_water_activity,
-            wave_water_peak: self.wave_water_peak,
-            wave_water_pow: self.wave_water_pow,
-            wave_water_x_factor: self.wave_water_x_factor,
-            wave_water_z_factor: self.wave_water_z_factor,
-            wave_water_frequency: self.wave_water_frequency,
-        }
     }
 
     fn generate_chunk(
@@ -391,23 +285,26 @@ impl App {
                 let chunk_data = terrain.get(&chunk).unwrap();
 
                 // Draw ground
-                let uniforms = self.uniforms(projection, camera, camera, now_f32());
-                self.shader
-                    .draw_voxels(&mut self.ctx, &chunk_data.ground, &uniforms);
+                self.shader.draw_voxels(
+                    &mut self.ctx,
+                    &chunk_data.ground,
+                    projection,
+                    camera,
+                    camera,
+                );
 
                 // First collect all models (in the current chunk) in an iterator
                 let models = chunk_data.objects.iter().flatten();
 
                 // Then draw each model one at a time
                 for model in models {
-                    let uniforms = self.uniforms(
+                    self.shader.draw_voxels(
+                        &mut self.ctx,
+                        &model.points,
                         projection,
                         camera * Mat4::from_rotation_translation(model.rotation, model.translation),
                         camera,
-                        now_f32(),
                     );
-                    self.shader
-                        .draw_voxels(&mut self.ctx, &model.points, &uniforms);
                 }
             }
         }
