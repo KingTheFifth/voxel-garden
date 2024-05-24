@@ -5,6 +5,8 @@ use std::{
     sync::{Mutex, OnceLock},
 };
 
+use glam::IVec3;
+
 use crate::Point;
 
 static SPHERES: OnceLock<Mutex<HashMap<u32, Vec<Point>>>> = OnceLock::new();
@@ -111,7 +113,7 @@ pub fn circle(midpoint: Point, r: f32) -> Vec<Point> {
     points
 }
 
-pub fn sphere(midpoint: Point, r: f32) -> Vec<Point> {
+pub fn sphere(r: f32) -> Vec<Point> {
     let mut spheres = SPHERES
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
@@ -124,7 +126,7 @@ pub fn sphere(midpoint: Point, r: f32) -> Vec<Point> {
         x: px,
         y: py,
         z: pz,
-    } = midpoint;
+    } = IVec3::new(0, 0, 0);
     let bound = r.ceil() as i32;
     for xi in -bound..=bound {
         let x = xi as f32;
