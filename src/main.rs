@@ -16,6 +16,7 @@ use models::terrain::{generate_terrain, GenerationPositions, TerrainConfig};
 use noise::Perlin;
 use rand::{thread_rng, Rng, RngCore};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
+use shader::Uniforms;
 
 use crate::camera::{trackball_control, Movement};
 
@@ -415,6 +416,24 @@ impl App {
         self.egui_mq.draw(&mut self.ctx);
     }
 
+    fn uniforms(
+        &self,
+        proj_matrix: Mat4,
+        model_matrix: Mat4,
+        camera_matrix: Mat4,
+        time: f32,
+    ) -> Uniforms {
+        Uniforms {
+            proj_matrix,
+            model_matrix,
+            camera_matrix,
+            sun_direction: self.sun_direction,
+            time,
+            sun_color: self.sun_color,
+            ambient_light_color: self.ambient_light_color,
+        }
+    }
+
     fn generate_chunk(
         biome_config: &BiomeConfig,
         terrain_config: &TerrainConfig,
@@ -480,19 +499,17 @@ impl App {
                     self.cube.0.vertex_buffers[1],
                     BufferSource::slice(&chunk_data.ground),
                 );
-                self.ctx
-                    .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                        proj_matrix: projection,
-                        model_matrix: camera,
-                        camera_matrix: camera,
-                        sun_direction: self.sun_direction,
-                        sun_color: self.sun_color,
-                        time: SystemTime::now()
+                self.ctx.apply_uniforms(UniformsSource::table(
+                    &self.uniforms(
+                        projection,
+                        camera,
+                        camera,
+                        SystemTime::now()
                             .duration_since(self.system_time)
                             .unwrap()
                             .as_secs_f32(),
-                        ambient_light_color: self.ambient_light_color,
-                    }));
+                    ),
+                ));
                 self.ctx
                     .draw(0, self.cube.1, chunk_data.ground.len() as i32);
 
@@ -516,23 +533,21 @@ impl App {
                         self.cube.0.vertex_buffers[1],
                         BufferSource::slice(&model.points),
                     );
-                    self.ctx
-                        .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                            proj_matrix: projection,
-                            model_matrix: camera
+                    self.ctx.apply_uniforms(UniformsSource::table(
+                        &self.uniforms(
+                            projection,
+                            camera
                                 * Mat4::from_rotation_translation(
                                     model.rotation,
                                     model.translation,
                                 ),
-                            camera_matrix: camera,
-                            sun_direction: self.sun_direction,
-                            sun_color: self.sun_color,
-                            time: SystemTime::now()
+                            camera,
+                            SystemTime::now()
                                 .duration_since(self.system_time)
                                 .unwrap()
                                 .as_secs_f32(),
-                            ambient_light_color: self.ambient_light_color,
-                        }));
+                        ),
+                    ));
                     self.ctx.draw(0, self.cube.1, model.points.len() as i32);
                 }
             }
