@@ -88,9 +88,17 @@ pub fn generate_terrain(
 
             if current_height <= config.min_height {
                 let mut position = Vec3::new(x as f32, config.min_height, z as f32);
-                instance_data.push(InstanceData::new(position, WATER_BLUE, 1));
+                instance_data.push(InstanceData {
+                    position,
+                    color: WATER_BLUE,
+                    is_water: 1,
+                });
                 position.y += 1.;
-                instance_data.push(InstanceData::new(position, WATER_BLUE, 1));
+                instance_data.push(InstanceData {
+                    position,
+                    color: WATER_BLUE,
+                    is_water: 1,
+                });
                 continue;
             }
 
@@ -101,7 +109,11 @@ pub fn generate_terrain(
                 Biome::Desert => Vec4::new(0.7, 0.7, 0.1, 1.0),
             };
             let position = Vec3::new(x as f32, current_height, z as f32);
-            instance_data.push(InstanceData::new(position, color, 0));
+            instance_data.push(InstanceData {
+                position,
+                color,
+                is_water: 0,
+            });
 
             // Biome_config will give some plant to spawn here or not depending on rng
             if let Some(spawn_type) = biome_config.get_spawn_type(x, z) {
@@ -124,15 +136,15 @@ pub fn generate_terrain(
                     ),
                 };
                 spawn_points.push(SpawnPoint::new(
-                    InstanceData::new(
-                        Vec3::new(
+                    InstanceData {
+                        position: Vec3::new(
                             position.x,
                             position.y + 1., // We place thing on the ground, not in in
                             position.z,
                         ),
                         color,
-                        0,
-                    ),
+                        is_water: 0,
+                    },
                     spawn_type,
                 ));
                 // TODO not option when we generate tree and cactus too
