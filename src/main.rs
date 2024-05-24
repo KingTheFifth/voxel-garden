@@ -1,17 +1,20 @@
 use std::collections::HashSet;
 use std::mem::size_of;
 use std::sync::{mpsc, Arc, Mutex};
+use std::time::{Duration, SystemTime};
 use std::{collections::HashMap, f32::consts::PI};
 
 use glam::{IVec2, IVec3, Mat4, Quat, Vec2, Vec3, Vec4};
 use miniquad::{
     conf, date, window, Bindings, BufferLayout, BufferSource, BufferType, BufferUsage, Comparison,
     CullFace, EventHandler, GlContext, KeyCode, PassAction, Pipeline, PipelineParams,
-    RenderingBackend, ShaderSource, UniformsSource, VertexAttribute, VertexFormat, VertexStep,
+    RenderingBackend, ShaderSource, TextureFormat, TextureKind, TextureParams, TextureWrap,
+    UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
 use models::biomes::BiomeConfig;
 use models::terrain::{generate_terrain, GenerationPositions, TerrainConfig};
 use noise::Perlin;
+use rand::{thread_rng, Rng, RngCore};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
 use crate::camera::{trackball_control, Movement};
@@ -59,6 +62,8 @@ struct App {
     // This is per-chunk
     terrain: Arc<Mutex<Terrain>>,
     terrain_config: TerrainConfig,
+    // Used to get timedifference for water waves
+    system_time: SystemTime,
     terrain_chunk_gen_queue: mpsc::Sender<IVec2>,
     terrain_chunk_waiting: HashSet<IVec2>,
 
@@ -94,11 +99,16 @@ struct VertexData {
 struct InstanceData {
     position: Vec3,
     color: Vec4,
+    is_water: u32,
 }
 
 impl InstanceData {
-    fn new(position: Vec3, color: Vec4) -> InstanceData {
-        InstanceData { position, color }
+    fn new(position: Vec3, color: Vec4, is_water: u32) -> InstanceData {
+        InstanceData {
+            position,
+            color,
+            is_water,
+        }
     }
 }
 
@@ -173,10 +183,30 @@ impl App {
             BufferSource::empty::<InstanceData>(MAX_INSTANCE_DATA),
         );
 
+        let mut random_bytes = [0u8; 1024 * 1024 * 4];
+        let mut rng = thread_rng();
+        for i in 0..(1024 * 1024) {
+            random_bytes[i * 4 + 0] = rng.gen();
+            random_bytes[i * 4 + 1] = rng.gen();
+            random_bytes[i * 4 + 2] = rng.gen();
+            random_bytes[i * 4 + 3] = 255;
+        }
+        let water_random_tex = ctx.new_texture_from_data_and_format(
+            &random_bytes,
+            TextureParams {
+                kind: TextureKind::Texture2D,
+                width: 1024,
+                height: 1024,
+                format: TextureFormat::RGBA8,
+                wrap: TextureWrap::Repeat,
+                ..Default::default()
+            },
+        );
+
         let bindings = Bindings {
             vertex_buffers: vec![geometry_vertex_buffer, instance_buffer],
             index_buffer,
-            images: vec![],
+            images: vec![water_random_tex],
         };
 
         let pipeline = ctx.new_pipeline(
@@ -194,6 +224,7 @@ impl App {
                 VertexAttribute::with_buffer("in_normal", VertexFormat::Float3, 0),
                 VertexAttribute::with_buffer("in_inst_position", VertexFormat::Float3, 1), // TODO: VertexFormat::Int32?
                 VertexAttribute::with_buffer("in_inst_color", VertexFormat::Float4, 1),
+                VertexAttribute::with_buffer("is_water", VertexFormat::Int1, 1),
             ],
             shader,
             PipelineParams {
@@ -210,6 +241,7 @@ impl App {
             height: 20,
             depth: CHUNK_SIZE,
             max_height: 40.,
+            min_height: 6.,
             noise: Perlin::new(555),
         };
 
@@ -268,6 +300,7 @@ impl App {
             flying_movement_speed: 10.0,
             on_ground_movement_speed: 40.0,
             render_distance: 8,
+            system_time: SystemTime::now(),
         };
         // Make sure aspect_ratio and fov_y_radians are correct at the first draw
         app.resize_event(window_width, window_height);
@@ -454,6 +487,10 @@ impl App {
                         camera_matrix: camera,
                         sun_direction: self.sun_direction,
                         sun_color: self.sun_color,
+                        time: SystemTime::now()
+                            .duration_since(self.system_time)
+                            .unwrap()
+                            .as_secs_f32(),
                         ambient_light_color: self.ambient_light_color,
                     }));
                 self.ctx
@@ -490,6 +527,10 @@ impl App {
                             camera_matrix: camera,
                             sun_direction: self.sun_direction,
                             sun_color: self.sun_color,
+                            time: SystemTime::now()
+                                .duration_since(self.system_time)
+                                .unwrap()
+                                .as_secs_f32(),
                             ambient_light_color: self.ambient_light_color,
                         }));
                     self.ctx.draw(0, self.cube.1, model.points.len() as i32);
@@ -796,13 +837,14 @@ mod shader {
 
     pub fn meta() -> ShaderMeta {
         ShaderMeta {
-            images: vec![],
+            images: vec!["water_random".to_string()],
             uniforms: UniformBlockLayout {
                 uniforms: vec![
                     UniformDesc::new("proj_matrix", UniformType::Mat4),
                     UniformDesc::new("model_matrix", UniformType::Mat4),
                     UniformDesc::new("camera_matrix", UniformType::Mat4),
                     UniformDesc::new("sun_direction", UniformType::Float3),
+                    UniformDesc::new("time", UniformType::Float1),
                     UniformDesc::new("sun_color", UniformType::Float4),
                     UniformDesc::new("ambient_light_color", UniformType::Float4),
                 ],
@@ -816,6 +858,7 @@ mod shader {
         pub model_matrix: Mat4,
         pub camera_matrix: Mat4,
         pub sun_direction: Vec3,
+        pub time: f32,
         pub sun_color: Vec4,
         pub ambient_light_color: Vec4,
     }

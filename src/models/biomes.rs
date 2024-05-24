@@ -114,6 +114,7 @@ impl BiomeConfig {
 
     pub fn get_biome(&self, x: i32, z: i32) -> Biome {
         let s = 100.0 * self.sample_biome(x, z);
+
         if s <= 20.0 {
             Biome::Desert
         } else if s <= 50.0 {

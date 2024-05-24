@@ -29,6 +29,7 @@ pub fn rock(_seed: u64, translation: Vec3) -> Vec<Model> {
                     (z + z_offs) as f32,
                 ),
                 color: GREY,
+                is_water: 0,
             })
             .collect();
 

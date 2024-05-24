@@ -1,7 +1,7 @@
 use crate::models::biomes::{Biome, BiomeConfig};
 use crate::models::flower::proc_gen_flower;
 use crate::models::{rock, tree, Model};
-use crate::utils::{BROWN, GREEN, GREY, RED};
+use crate::utils::{BLUE, BROWN, GREEN, GREY, RED};
 use crate::InstanceData;
 use glam::{Vec3, Vec4};
 use noise::{NoiseFn, Perlin};
@@ -23,6 +23,7 @@ pub struct TerrainConfig {
     pub height: i32,
     pub depth: i32,
     pub max_height: f32,
+    pub min_height: f32,
     pub noise: Perlin,
 }
 
@@ -94,6 +95,14 @@ pub fn generate_terrain(
         for x in x..x + width {
             let current_height = config.sample(x as f32, z as f32).trunc();
 
+            if current_height <= config.min_height {
+                let mut position = Vec3::new(x as f32, config.min_height, z as f32);
+                instance_data.push(InstanceData::new(position, BLUE, 1));
+                position.y += 1.;
+                instance_data.push(InstanceData::new(position, BLUE, 1));
+                continue;
+            }
+
             // Generate instance data for ground voxels
             let biome = biome_config.get_biome(x, z);
             let color = match biome {
@@ -101,7 +110,7 @@ pub fn generate_terrain(
                 Biome::Desert => Vec4::new(0.7, 0.7, 0.1, 1.0),
             };
             let position = Vec3::new(x as f32, current_height, z as f32);
-            instance_data.push(InstanceData::new(position, color));
+            instance_data.push(InstanceData::new(position, color, 0));
 
             // Biome_config will give some plant to spawn here or not depending on rng
             if let Some(spawn_type) = biome_config.get_spawn_type(x, z) {
@@ -131,6 +140,7 @@ pub fn generate_terrain(
                             position.z,
                         ),
                         color,
+                        0,
                     ),
                     spawn_type,
                 ));
