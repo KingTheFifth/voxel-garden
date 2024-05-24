@@ -8,16 +8,6 @@ pub struct BiomeSpawnData {
     pub group_spawn_rate: f32,
 }
 
-impl BiomeSpawnData {
-    pub fn new(spawn_type: SpawnType, spawn_rate: f32, group_spawn_rate: f32) -> BiomeSpawnData {
-        BiomeSpawnData {
-            spawn_type,
-            spawn_rate,
-            group_spawn_rate,
-        }
-    }
-}
-
 pub enum Biome {
     Forest,
     Field,
@@ -75,8 +65,7 @@ impl BiomeConfig {
     fn sample(&self, sample_rate: f32, x: f32, z: f32) -> f32 {
         let px = x * sample_rate;
         let pz = z * sample_rate;
-        let sample = (self.noise.get([px as f64, pz as f64]) as f32 + 1.0) / 2.0;
-        sample
+        (self.noise.get([px as f64, pz as f64]) as f32 + 1.0) / 2.0
     }
 
     fn sample_biome(&self, x: i32, z: i32) -> f32 {
