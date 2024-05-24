@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::SystemTime;
 use std::{collections::HashMap, f32::consts::PI};
 
 use glam::{IVec2, IVec3, Mat4, Quat, Vec2, Vec3, Vec4};
@@ -15,6 +14,7 @@ use crate::models::biomes::BiomeConfig;
 use crate::models::terrain::{generate_terrain, GenerationPositions, TerrainConfig};
 pub use crate::shader::InstanceData;
 use crate::shader::{Shader, Uniforms};
+use crate::utils::now_f32;
 
 mod camera;
 mod models;
@@ -49,8 +49,6 @@ struct App {
     // This is per-chunk
     terrain: Arc<Mutex<Terrain>>,
     terrain_config: TerrainConfig,
-    // Used to get timedifference for water waves
-    system_time: SystemTime,
     terrain_chunk_gen_queue: mpsc::Sender<IVec2>,
     terrain_chunk_waiting: HashSet<IVec2>,
 
@@ -157,7 +155,6 @@ impl App {
             flying_movement_speed: 10.0,
             on_ground_movement_speed: 40.0,
             render_distance: 8,
-            system_time: SystemTime::now(),
         };
         // Make sure aspect_ratio and fov_y_radians are correct at the first draw
         app.resize_event(window_width, window_height);
@@ -360,10 +357,6 @@ impl App {
         camera_position: IVec2,
         camera_look_h: Option<f32>,
     ) {
-        let time = SystemTime::now()
-            .duration_since(self.system_time)
-            .unwrap()
-            .as_secs_f32();
         // Which chunk is the camera located in?
         let camera_chunk = IVec2::new(
             camera_position.x / CHUNK_SIZE,
@@ -398,7 +391,7 @@ impl App {
                 let chunk_data = terrain.get(&chunk).unwrap();
 
                 // Draw ground
-                let uniforms = self.uniforms(projection, camera, camera, time);
+                let uniforms = self.uniforms(projection, camera, camera, now_f32());
                 self.shader
                     .draw_voxels(&mut self.ctx, &chunk_data.ground, &uniforms);
 
@@ -411,7 +404,7 @@ impl App {
                         projection,
                         camera * Mat4::from_rotation_translation(model.rotation, model.translation),
                         camera,
-                        time,
+                        now_f32(),
                     );
                     self.shader
                         .draw_voxels(&mut self.ctx, &model.points, &uniforms);
