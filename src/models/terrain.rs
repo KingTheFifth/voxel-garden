@@ -1,7 +1,7 @@
 use crate::models::biomes::{Biome, BiomeConfig};
 use crate::models::flower::proc_gen_flower;
 use crate::models::{rock, tree, Model};
-use crate::utils::{BLUE, BROWN, GREEN, GREY, RED};
+use crate::utils::{BROWN, GREEN, GREY, RED, WATER_BLUE};
 use crate::InstanceData;
 use glam::{Vec3, Vec4};
 use noise::{NoiseFn, Perlin};
@@ -97,9 +97,9 @@ pub fn generate_terrain(
 
             if current_height <= config.min_height {
                 let mut position = Vec3::new(x as f32, config.min_height, z as f32);
-                instance_data.push(InstanceData::new(position, BLUE, 1));
+                instance_data.push(InstanceData::new(position, WATER_BLUE, 1));
                 position.y += 1.;
-                instance_data.push(InstanceData::new(position, BLUE, 1));
+                instance_data.push(InstanceData::new(position, WATER_BLUE, 1));
                 continue;
             }
 

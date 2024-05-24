@@ -16,6 +16,12 @@ pub const BROWN: Vec4 = Vec4::new(0.5, 0.2, 0.0, 1.0);
 pub const YELLOW: Vec4 = Vec4::new(1.0, 1.0, 0.0, 1.0);
 pub const PURPLE: Vec4 = Vec4::new(0.5, 0.0, 0.5, 1.0);
 pub const GREY: Vec4 = Vec4::new(0.2, 0.2, 0.2, 1.0);
+pub const WATER_BLUE: Vec4 = Vec4::new(
+    0x04 as f32 / 255.0,
+    0xAD as f32 / 255.0,
+    0xE2 as f32 / 255.0,
+    1.0,
+);
 
 pub fn arb_rotate(axis: Vec3, angle: f32) -> Mat4 {
     // Check if parrallel to Z
