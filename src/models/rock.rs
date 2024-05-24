@@ -5,7 +5,7 @@ use rand::{thread_rng, Rng};
 
 use crate::utils::GREY;
 use crate::{InstanceData, Point};
-use glam::{IVec3, Quat, Vec3};
+use glam::{Quat, Vec3};
 
 pub fn rock(_seed: u64, translation: Vec3) -> Vec<Model> {
     // let rng = ChaCha8Rng::from_seed(_seed);

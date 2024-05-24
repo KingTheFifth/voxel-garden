@@ -12,7 +12,7 @@ use miniquad::{
     UniformsSource, VertexAttribute, VertexFormat, VertexStep,
 };
 use noise::Perlin;
-use rand::{thread_rng, Rng, RngCore};
+use rand::{thread_rng, Rng};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
 use crate::camera::{trackball_control, Movement};
@@ -194,7 +194,7 @@ impl App {
         let mut random_bytes = [0u8; 1024 * 1024 * 4];
         let mut rng = thread_rng();
         for i in 0..(1024 * 1024) {
-            random_bytes[i * 4 + 0] = rng.gen();
+            random_bytes[i * 4] = rng.gen();
             random_bytes[i * 4 + 1] = rng.gen();
             random_bytes[i * 4 + 2] = rng.gen();
             random_bytes[i * 4 + 3] = 255;

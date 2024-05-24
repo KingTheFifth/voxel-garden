@@ -57,16 +57,7 @@ pub struct GenerationPositions {
 }
 
 impl GenerationPositions {
-    fn new(ground: Vec<InstanceData>, spawn_points: Vec<SpawnPoint>) -> GenerationPositions {
-        let objects = Vec::new();
-        GenerationPositions {
-            ground,
-            spawn_points,
-            objects,
-        }
-    }
-
-    fn new_with_object(
+    fn new(
         ground: Vec<InstanceData>,
         spawn_points: Vec<SpawnPoint>,
         objects: Vec<Object>,
@@ -151,6 +142,6 @@ pub fn generate_terrain(
             }
         }
     }
-    GenerationPositions::new_with_object(instance_data, spawn_points, objects)
+    GenerationPositions::new(instance_data, spawn_points, objects)
     //GenerationPositions::new(instance_data, spawn_points)
 }
