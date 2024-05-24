@@ -122,11 +122,6 @@ pub fn sphere(r: f32) -> Vec<Point> {
         return sphere.clone();
     }
     let mut points = vec![];
-    let Point {
-        x: px,
-        y: py,
-        z: pz,
-    } = IVec3::new(0, 0, 0);
     let bound = r.ceil() as i32;
     for xi in -bound..=bound {
         let x = xi as f32;
@@ -136,9 +131,9 @@ pub fn sphere(r: f32) -> Vec<Point> {
                 let z = zi as f32;
                 if x.powi(2) + y.powi(2) + z.powi(2) < r.powi(2) {
                     points.push(Point {
-                        x: px + xi,
-                        y: py + yi,
-                        z: pz + zi,
+                        x: xi,
+                        y: yi,
+                        z: zi,
                     });
                 }
             }
