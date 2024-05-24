@@ -45,7 +45,6 @@ struct App {
     /// Collecst the N latest FPS values. Used for the FPS graph.
     fps_history: AllocRingBuffer<f32>,
 
-    // This is per-chunk
     terrain: Arc<Mutex<Terrain>>,
     terrain_config: TerrainConfig,
     terrain_chunk_gen_queue: mpsc::Sender<IVec2>,
