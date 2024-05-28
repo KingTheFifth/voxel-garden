@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::mem::size_of;
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 use std::{collections::HashMap, f32::consts::PI};
 
 use glam::{IVec2, IVec3, Mat4, Quat, Vec2, Vec3, Vec4};
@@ -16,6 +16,7 @@ use models::terrain::{generate_terrain, GenerationPositions, TerrainConfig};
 use noise::Perlin;
 use rand::{thread_rng, Rng, RngCore};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
+use shader::Uniforms;
 
 use crate::camera::{trackball_control, Movement};
 
@@ -70,6 +71,12 @@ struct App {
     sun_direction: Vec3,
     sun_color: Vec4,
     ambient_light_color: Vec4,
+    ambient_water_activity: f32,
+    wave_water_peak: f32,
+    wave_water_pow: f32,
+    wave_water_x_factor: f32,
+    wave_water_z_factor: f32,
+    wave_water_frequency: f32,
 
     keys_down: HashMap<KeyCode, bool>,
     keys_just_pressed: HashSet<KeyCode>,
@@ -285,6 +292,12 @@ impl App {
             sun_direction: Vec3::new(1.0, 1.0, 0.0),
             sun_color: Vec4::new(1.0, 1.0, 0.2, 1.0),
             ambient_light_color: Vec4::new(0.7, 0.7, 0.7, 1.0),
+            ambient_water_activity: 0.25,
+            wave_water_peak: 0.7,
+            wave_water_pow: 8.0,
+            wave_water_x_factor: 0.0005,
+            wave_water_z_factor: 0.00115,
+            wave_water_frequency: 3.0,
             keys_down: HashMap::new(),
             keys_just_pressed: HashSet::new(),
             mouse_left_down: false,
@@ -379,6 +392,50 @@ impl App {
                     self.sun_color.y = rgb[1];
                     self.sun_color.z = rgb[2];
                     ui.end_row();
+
+                    ui.label("ambient water activity");
+                    ui.add(
+                        egui::Slider::new(&mut self.ambient_water_activity, (0.0)..=1.0)
+                            .clamp_to_range(true),
+                    );
+                    ui.end_row();
+
+                    ui.label("wave water peak");
+                    ui.add(
+                        egui::Slider::new(&mut self.wave_water_peak, (0.0)..=1.0)
+                            .clamp_to_range(true),
+                    );
+                    ui.end_row();
+
+                    ui.label("wave water pow");
+                    ui.add(
+                        egui::Slider::new(&mut self.wave_water_pow, (0.0)..=20.0)
+                            .clamp_to_range(true),
+                    );
+                    ui.end_row();
+
+                    ui.label("wave water x factor");
+                    ui.add(
+                        egui::Slider::new(&mut self.wave_water_x_factor, (0.0)..=0.01)
+                            .clamp_to_range(true)
+                            .logarithmic(true),
+                    );
+                    ui.end_row();
+
+                    ui.label("wave water z factor");
+                    ui.add(
+                        egui::Slider::new(&mut self.wave_water_z_factor, (0.0)..=0.01)
+                            .clamp_to_range(true)
+                            .logarithmic(true),
+                    );
+                    ui.end_row();
+
+                    ui.label("wave water frequency");
+                    ui.add(
+                        egui::Slider::new(&mut self.wave_water_frequency, (0.0)..=20.0)
+                            .clamp_to_range(true),
+                    );
+                    ui.end_row();
                 });
             });
 
@@ -413,6 +470,30 @@ impl App {
         });
 
         self.egui_mq.draw(&mut self.ctx);
+    }
+
+    fn uniforms(
+        &self,
+        proj_matrix: Mat4,
+        model_matrix: Mat4,
+        camera_matrix: Mat4,
+        time: f32,
+    ) -> Uniforms {
+        Uniforms {
+            proj_matrix,
+            model_matrix,
+            camera_matrix,
+            sun_direction: self.sun_direction,
+            time,
+            sun_color: self.sun_color,
+            ambient_light_color: self.ambient_light_color,
+            ambient_water_activity: self.ambient_water_activity,
+            wave_water_peak: self.wave_water_peak,
+            wave_water_pow: self.wave_water_pow,
+            wave_water_x_factor: self.wave_water_x_factor,
+            wave_water_z_factor: self.wave_water_z_factor,
+            wave_water_frequency: self.wave_water_frequency,
+        }
     }
 
     fn generate_chunk(
@@ -480,19 +561,17 @@ impl App {
                     self.cube.0.vertex_buffers[1],
                     BufferSource::slice(&chunk_data.ground),
                 );
-                self.ctx
-                    .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                        proj_matrix: projection,
-                        model_matrix: camera,
-                        camera_matrix: camera,
-                        sun_direction: self.sun_direction,
-                        sun_color: self.sun_color,
-                        time: SystemTime::now()
+                self.ctx.apply_uniforms(UniformsSource::table(
+                    &self.uniforms(
+                        projection,
+                        camera,
+                        camera,
+                        SystemTime::now()
                             .duration_since(self.system_time)
                             .unwrap()
                             .as_secs_f32(),
-                        ambient_light_color: self.ambient_light_color,
-                    }));
+                    ),
+                ));
                 self.ctx
                     .draw(0, self.cube.1, chunk_data.ground.len() as i32);
 
@@ -516,23 +595,21 @@ impl App {
                         self.cube.0.vertex_buffers[1],
                         BufferSource::slice(&model.points),
                     );
-                    self.ctx
-                        .apply_uniforms(UniformsSource::table(&shader::Uniforms {
-                            proj_matrix: projection,
-                            model_matrix: camera
+                    self.ctx.apply_uniforms(UniformsSource::table(
+                        &self.uniforms(
+                            projection,
+                            camera
                                 * Mat4::from_rotation_translation(
                                     model.rotation,
                                     model.translation,
                                 ),
-                            camera_matrix: camera,
-                            sun_direction: self.sun_direction,
-                            sun_color: self.sun_color,
-                            time: SystemTime::now()
+                            camera,
+                            SystemTime::now()
                                 .duration_since(self.system_time)
                                 .unwrap()
                                 .as_secs_f32(),
-                            ambient_light_color: self.ambient_light_color,
-                        }));
+                        ),
+                    ));
                     self.ctx.draw(0, self.cube.1, model.points.len() as i32);
                 }
             }
@@ -847,6 +924,12 @@ mod shader {
                     UniformDesc::new("time", UniformType::Float1),
                     UniformDesc::new("sun_color", UniformType::Float4),
                     UniformDesc::new("ambient_light_color", UniformType::Float4),
+                    UniformDesc::new("ambient_water_activity", UniformType::Float1),
+                    UniformDesc::new("wave_water_peak", UniformType::Float1),
+                    UniformDesc::new("wave_water_pow", UniformType::Float1),
+                    UniformDesc::new("wave_water_x_factor", UniformType::Float1),
+                    UniformDesc::new("wave_water_z_factor", UniformType::Float1),
+                    UniformDesc::new("wave_water_frequency", UniformType::Float1),
                 ],
             },
         }
@@ -861,5 +944,11 @@ mod shader {
         pub time: f32,
         pub sun_color: Vec4,
         pub ambient_light_color: Vec4,
+        pub ambient_water_activity: f32,
+        pub wave_water_peak: f32,
+        pub wave_water_pow: f32,
+        pub wave_water_x_factor: f32,
+        pub wave_water_z_factor: f32,
+        pub wave_water_frequency: f32,
     }
 }
