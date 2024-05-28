@@ -23,6 +23,7 @@ pub const WATER_BLUE: Vec4 = Vec4::new(
     1.0,
 );
 
+/// Port of arbRotate from lab material
 pub fn arb_rotate(axis: Vec3, angle: f32) -> Mat4 {
     // Check if parrallel to Z
     if axis.x < EPSILON && axis.x > -EPSILON && axis.y < EPSILON && axis.y > -EPSILON {
@@ -51,6 +52,11 @@ pub fn arb_rotate(axis: Vec3, angle: f32) -> Mat4 {
     rot_mat_t * rot_x_mat * rot_mat
 }
 
-pub fn voxel_to_vec(iv: &Point) -> Vec3 {
-    Vec3::new(iv.x as f32, iv.y as f32, iv.z as f32)
+pub fn now_f32() -> f32 {
+    use std::time::SystemTime;
+
+    let time = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap();
+    time.as_secs_f64().rem_euclid(100000.0) as f32
 }
