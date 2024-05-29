@@ -12,12 +12,12 @@ use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use crate::camera::{trackball_control, Movement};
 use crate::models::biomes::BiomeConfig;
 use crate::models::terrain::{generate_terrain, GenerationPositions, TerrainConfig};
-pub use crate::shader::InstanceData;
-use crate::shader::Shader;
+use crate::rendering::InstanceData;
+use crate::rendering::Shader;
 
 mod camera;
 mod models;
-mod shader;
+mod rendering;
 mod utils;
 
 type Point = IVec3;
@@ -70,7 +70,7 @@ impl App {
         let mut ctx = GlContext::new();
         let (window_width, window_height) = window::screen_size();
 
-        let shader = shader::Shader::new(&mut ctx);
+        let shader = Shader::new(&mut ctx);
 
         let terrain_config = TerrainConfig {
             sample_rate: 0.004,
@@ -266,7 +266,9 @@ impl App {
                     self.terrain_chunk_waiting.remove(&chunk);
                 }
 
+                // check if the chunk has been generated already
                 if !terrain.contains_key(&chunk) {
+                    // only send the request if we haven't already sent it
                     if !self.terrain_chunk_waiting.contains(&chunk) {
                         self.terrain_chunk_gen_queue.send(chunk).unwrap();
                         self.terrain_chunk_waiting.insert(chunk);
